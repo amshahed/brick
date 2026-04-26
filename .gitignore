@@ -1,0 +1,23 @@
+## XcodeGen generates these — only project.yml is committed.
+Brick.xcodeproj/
+*.xcworkspace/
+
+## Build artifacts
+DerivedData/
+build/
+.build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+## Xcode user state
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+## Swift Package Manager
+.swiftpm/
+Package.resolved
+
+## macOS
+.DS_Store

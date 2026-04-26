@@ -1,0 +1,145 @@
+name: Brick
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+  developmentLanguage: en
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    CURRENT_PROJECT_VERSION: "1"
+    MARKETING_VERSION: "0.1.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_STRICT_CONCURRENCY: minimal
+
+targets:
+  Brick:
+    type: application
+    platform: iOS
+    sources:
+      - path: Brick
+      - path: Shared
+    info:
+      path: Brick/Info.plist
+      properties:
+        UILaunchScreen:
+          UIColorName: ""
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIApplicationSupportsIndirectInputEvents: true
+        CFBundleDisplayName: Brick
+        CFBundleURLTypes:
+          - CFBundleURLName: com.amshahedhasan.brick
+            CFBundleURLSchemes:
+              - brick
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.amshahedhasan.brick
+        CODE_SIGN_ENTITLEMENTS: Brick/Brick.entitlements
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Brick
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: NO
+    dependencies:
+      - target: DeviceActivityMonitorExtension
+        embed: true
+        codeSign: true
+      - target: ShieldConfigurationExtension
+        embed: true
+        codeSign: true
+      - target: ShieldActionExtension
+        embed: true
+        codeSign: true
+
+  DeviceActivityMonitorExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: DeviceActivityMonitorExtension
+      - path: Shared
+    info:
+      path: DeviceActivityMonitorExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Brick Monitor
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.deviceactivity.monitor-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).DeviceActivityMonitorExtension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.amshahedhasan.brick.DeviceActivityMonitor
+        CODE_SIGN_ENTITLEMENTS: DeviceActivityMonitorExtension/DeviceActivityMonitorExtension.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+
+  ShieldConfigurationExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShieldConfigurationExtension
+    info:
+      path: ShieldConfigurationExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Brick Shield
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettingsUI.shield-configuration-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShieldConfigurationExtension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.amshahedhasan.brick.ShieldConfiguration
+        CODE_SIGN_ENTITLEMENTS: ShieldConfigurationExtension/ShieldConfigurationExtension.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+
+  ShieldActionExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShieldActionExtension
+      - path: Shared/SharedContainer.swift
+      - path: Shared/Services/BreakIntent.swift
+    info:
+      path: ShieldActionExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Brick Shield Action
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettings.shield-action-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShieldActionExtension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.amshahedhasan.brick.ShieldAction
+        CODE_SIGN_ENTITLEMENTS: ShieldActionExtension/ShieldActionExtension.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+
+  BrickTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: BrickTests
+      - path: Shared
+    dependencies:
+      - target: Brick
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.amshahedhasan.brick.Tests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Brick:
+    build:
+      targets:
+        Brick: all
+        DeviceActivityMonitorExtension: all
+        ShieldConfigurationExtension: all
+        ShieldActionExtension: all
+        BrickTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - BrickTests
+    archive:
+      config: Release
