@@ -7,32 +7,41 @@ struct TravelBanner: View {
     var onTapDetails: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "airplane")
-                .font(.title2)
-                .foregroundStyle(.tint)
-                .rotationEffect(.degrees(-20))
+        HStack(alignment: .top, spacing: Theme.Space.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Theme.accentMuted)
+                    .frame(width: 40, height: 40)
+                Image(systemName: "airplane")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .rotationEffect(.degrees(-20))
+            }
             VStack(alignment: .leading, spacing: 4) {
-                Text("Travel mode active")
-                    .font(.headline)
+                Text("Travel mode active".uppercased())
+                    .font(Theme.label)
+                    .tracking(0.8)
+                    .foregroundStyle(Theme.accent)
                 Text(subtitle)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                HStack {
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                HStack(spacing: Theme.Space.sm) {
                     Button("Disable", action: onDisable)
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .tint(.red)
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.red)
+                        .font(.footnote.weight(.semibold))
+                    Text("·")
+                        .foregroundStyle(.secondary)
                     Button("Details", action: onTapDetails)
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.secondary)
+                        .font(.footnote.weight(.semibold))
                 }
-                .padding(.top, 4)
+                .padding(.top, 2)
             }
             Spacer()
         }
-        .padding()
-        .background(Color.orange.opacity(0.12), in: .rect(cornerRadius: 14))
+        .cardSurface()
     }
 
     private var subtitle: String {

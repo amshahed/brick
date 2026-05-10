@@ -6,6 +6,12 @@ enum LockedAction {
     case deleteBlocklist(Blocklist)
     case disableSchedule(Schedule)
     case deleteSchedule(Schedule)
+    /// Editing the load-bearing fields of a schedule (blocklist reference,
+    /// weekday mask, time window, date bounds) while it's actively running.
+    /// Renaming a schedule is *not* covered by this lock — the name doesn't
+    /// affect what's blocked right now. PRD story 31 keeps the lockdown
+    /// minimal; we only gate fields that change current enforcement.
+    case editScheduleFields(Schedule)
     case cancelOneShot(OneShotBlock)
 }
 
@@ -14,7 +20,9 @@ struct LockdownManager {
 
     func isLocked(_ action: LockedAction, at instant: Date = .now) -> Bool {
         switch action {
-        case .disableSchedule(let schedule), .deleteSchedule(let schedule):
+        case .disableSchedule(let schedule),
+             .deleteSchedule(let schedule),
+             .editScheduleFields(let schedule):
             return isScheduleActive(schedule, at: instant)
         case .cancelOneShot(let oneShot):
             return oneShot.startedAt <= instant && instant < oneShot.expiresAt

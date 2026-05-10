@@ -1,7 +1,14 @@
 # Issue #15 — Onboarding + templates
 
 ## Goal
-First-launch onboarding: welcome → FC auth → passcode → template selection → apps per template. Track `hasCompletedOnboarding`. Templates browsable post-onboarding.
+First-launch onboarding: welcome → FC auth → Brick passcode → Screen Time passcode coaching → template selection → apps per template. Track `hasCompletedOnboarding`. Templates browsable post-onboarding.
+
+## Why two passcodes are coached separately
+Brick's local passcode (set in step 3) gates in-app actions during active blocks. Uninstall protection is a separate, OS-level mechanism: the user must (a) set an iOS Screen Time passcode and (b) turn on Settings → Screen Time → Content & Privacy Restrictions → "Deleting Apps: Don't Allow." Together those make iOS itself require the Screen Time passcode to delete any app — Brick included.
+
+This is **not** related to FamilyControls auth mode. Brick uses `.individual` auth (the only mode that works on a personal device — `.child` requires Family Sharing parent–child setup and fails immediately otherwise).
+
+Step 4 is a coaching step that deep-links to Settings and explains both toggles. It's a self-report — Brick can't verify the user actually flipped the iOS settings.
 
 ## Design
 
@@ -38,11 +45,15 @@ Values:
 ### `OnboardingView`
 NavigationStack with discrete pages. State machine:
 1. Welcome (continue button)
-2. FamilyControls auth (button triggers request)
-3. Passcode (inline reuse of PasscodeSetupView — on complete, advance)
-4. Templates (multi-select list; date pickers for bounded templates; Skip advances to Done)
-5. Apps (for each selected template: show picker via `familyActivityPicker`; "Skip this one" button)
-6. Done (marks `hasCompletedOnboarding = true`, dismisses)
+2. FamilyControls auth (button triggers `.child` auth request)
+3. Brick passcode (inline reuse of PasscodeSetupView — on complete, advance)
+4. **Screen Time passcode + uninstall lockdown coaching** — two sub-steps, both done in iOS Settings:
+   - Set the Screen Time passcode (Settings → Screen Time → Lock Screen Time Settings).
+   - Turn on Content & Privacy Restrictions and disallow deleting apps (Settings → Screen Time → Content & Privacy Restrictions → ON → iTunes & App Store Purchases → Deleting Apps → Don't Allow).
+   Copy explains the trade-off (this affects all apps, not just Brick — that's iOS's design). Recommends same passcode value as Brick passcode for simplicity, or different for stronger commitment. Button: "Open Settings" → `UIApplication.openSettingsURLString`. Toggle: "I've finished both steps" (self-report) enables Continue. A "Skip for now" button is allowed — Brick cannot verify and does not block onboarding on this step.
+5. Templates (multi-select list; date pickers for bounded templates; Skip advances to Done)
+6. Apps (for each selected template: show picker via `familyActivityPicker`; "Skip this one" button)
+7. Done (marks `hasCompletedOnboarding = true`, dismisses)
 
 Presented as `fullScreenCover` from RootView so the user can't tab past.
 

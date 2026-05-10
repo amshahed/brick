@@ -1,17 +1,24 @@
 import FamilyControls
 import SwiftData
 import SwiftUI
+import UIKit
 
-/// First-launch flow: welcome → FC auth → passcode → templates → apps.
-/// Presented as a `fullScreenCover` from RootView. Sets
-/// `AppSettings.hasCompletedOnboarding = true` on the final step.
+/// First-launch flow: welcome → FC auth → Brick passcode → Screen Time
+/// passcode → templates → apps → done. Presented as a `fullScreenCover`
+/// from `RootView`. Sets `AppSettings.hasCompletedOnboarding = true` on
+/// the final step.
+///
+/// Navigation: every step (except welcome) shows a Back button in the
+/// toolbar. Forward transitions go through `go(to:)` which records history.
 struct OnboardingView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
     @State private var step: Step = .welcome
+    @State private var history: [Step] = []
     @State private var authRequested = false
     @State private var authError: String?
+    @State private var screenTimeSlide: Int = 0
     @State private var selectedTemplates: Set<String> = []
     @State private var dateRanges: [String: DateRange] = [:]
     @State private var appsQueueEntries: [QueueEntry] = []
@@ -19,9 +26,11 @@ struct OnboardingView: View {
     @State private var pickerSelection: FamilyActivitySelection = .init()
     @State private var showingPicker = false
     @State private var errorText: String?
+    @State private var finishError: String?
+    @State private var finishAttempts: Int = 0
 
     enum Step: Int {
-        case welcome, auth, passcode, templates, apps, done
+        case welcome, auth, passcode, screenTimePasscode, templates, apps, done
     }
 
     struct DateRange: Equatable {
@@ -36,6 +45,7 @@ struct OnboardingView: View {
                 case .welcome: welcomeStep
                 case .auth: authStep
                 case .passcode: passcodeStep
+                case .screenTimePasscode: screenTimePasscodeStep
                 case .templates: templateStep
                 case .apps: appsStep
                 case .done: doneStep
@@ -43,91 +53,211 @@ struct OnboardingView: View {
             }
             .padding()
             .interactiveDismissDisabled()
+            .toolbar { toolbarContent }
         }
+        .task {
+            // If iOS already has the Screen Time grant from a prior run,
+            // skip the auth step — the system won't show the dialog again
+            // anyway, so showing this screen is just confusing friction.
+            if AuthorizationCenter.shared.authorizationStatus == .approved {
+                authRequested = true
+                authError = nil
+            }
+        }
+    }
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            if !history.isEmpty {
+                Button {
+                    goBack()
+                } label: {
+                    Label("Back", systemImage: "chevron.left")
+                }
+            }
+        }
+        ToolbarItem(placement: .principal) {
+            Text(stepTitle).font(.headline)
+        }
+    }
+
+    private var stepTitle: String {
+        switch step {
+        case .welcome: ""
+        case .auth: "Permission"
+        case .passcode: "Passcode"
+        case .screenTimePasscode: "Lock down"
+        case .templates: "Templates"
+        case .apps: "Apps"
+        case .done: ""
+        }
+    }
+
+    // MARK: - Step transitions (with history tracking)
+
+    private func go(to next: Step) {
+        history.append(step)
+        step = next
+    }
+
+    private func goBack() {
+        guard let previous = history.popLast() else { return }
+        step = previous
     }
 
     // MARK: - Steps
 
     private var welcomeStep: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            Image(systemName: "hand.raised.slash.fill")
-                .font(.system(size: 72))
-                .foregroundStyle(.tint)
-            Text("Welcome to Brick")
-                .font(.largeTitle.bold())
-            Text("Block distracting apps with real commitment. A passcode prevents easy disabling during active blocks.")
-                .font(.body)
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Button("Get started") { step = .auth }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-        }
+        OnboardingStep(
+            eyebrow: "Welcome",
+            title: "Block apps\nwith real commitment.",
+            body: "Brick is a focus tool that adds friction where other blockers fold. A passcode prevents impulse breaks. A structured budget keeps overage honest.",
+            icon: "hand.raised.slash.fill",
+            primaryLabel: "Get started",
+            primaryAction: {
+                if AuthorizationCenter.shared.authorizationStatus == .approved {
+                    go(to: .passcode)
+                } else {
+                    go(to: .auth)
+                }
+            }
+        )
     }
 
     private var authStep: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            Image(systemName: "lock.shield")
-                .font(.system(size: 56))
-                .foregroundStyle(.tint)
-            Text("Screen Time permission")
-                .font(.title.bold())
-            Text("Brick uses Apple's Screen Time framework to shield apps. You'll be asked to grant access next.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-            if let authError {
-                Text(authError).font(.footnote).foregroundStyle(.red)
-            }
-            Spacer()
-            Button(authRequested ? "Continue" : "Grant permission") {
-                if authRequested {
-                    step = .passcode
+        OnboardingStep(
+            eyebrow: "Permission",
+            title: "Screen Time access.",
+            body: "Brick uses Apple's Screen Time framework to shield apps. Tap Grant permission and then Continue on the system dialog.",
+            icon: "lock.shield",
+            errorText: authError,
+            primaryLabel: authPrimaryTitle,
+            primaryAction: {
+                if authSucceeded {
+                    go(to: .passcode)
                 } else {
                     Task { await requestAuth() }
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-        }
+        )
+    }
+
+    private var authSucceeded: Bool {
+        authRequested && authError == nil
+    }
+
+    private var authPrimaryTitle: String {
+        if authSucceeded { return "Continue" }
+        if authRequested { return "Try again" }
+        return "Grant permission"
     }
 
     private var passcodeStep: some View {
-        PasscodeSetupView(purpose: .firstTime) {
-            step = .templates
+        // Embed PasscodeSetupView without its own NavigationStack so the
+        // parent toolbar (with Back) remains visible. On save complete,
+        // advance to the next step.
+        PasscodeSetupView(
+            purpose: .firstTime,
+            embedInNavigationStack: false
+        ) {
+            go(to: .screenTimePasscode)
         }
     }
 
+    // MARK: - Screen Time slideshow
+
+    private var screenTimePasscodeStep: some View {
+        VStack(spacing: 0) {
+            TabView(selection: $screenTimeSlide) {
+                stpIntroSlide.tag(0)
+                stpPasscodeSlide.tag(1)
+                stpDeletionSlide.tag(2)
+                stpConfirmSlide.tag(3)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .always))
+            .indexViewStyle(.page(backgroundDisplayMode: .always))
+
+            Button("Skip for now") { go(to: .templates) }
+                .buttonStyle(.brickSecondary)
+                .padding(.horizontal, Theme.Space.lg)
+                .padding(.bottom, Theme.Space.lg)
+        }
+        .background(Theme.canvas.ignoresSafeArea())
+    }
+
+    private var stpIntroSlide: some View {
+        OnboardingStep(
+            eyebrow: "Lock down · 1 of 4",
+            title: "Two iOS steps\nblock uninstall.",
+            body: "Brick alone can't stop you from deleting it during a block. iOS has the lock — these next slides walk you through enabling it.",
+            icon: "lock.iphone"
+        ) { EmptyView() }
+    }
+
+    private var stpPasscodeSlide: some View {
+        OnboardingStep(
+            eyebrow: "Lock down · 2 of 4",
+            title: "Set a Screen Time passcode.",
+            body: "In Settings → Screen Time → Lock Screen Time Settings. Pick a passcode you don't easily reach for.",
+            icon: "key.fill",
+            primaryLabel: "Open Settings",
+            primaryAction: openSettings
+        ) { EmptyView() }
+    }
+
+    private var stpDeletionSlide: some View {
+        OnboardingStep(
+            eyebrow: "Lock down · 3 of 4",
+            title: "Disallow app deletion.",
+            body: "Settings → Screen Time → Content & Privacy Restrictions → On → iTunes & App Store Purchases → Deleting Apps → Don't Allow. This is iOS-wide, not just Brick — it's the only way iOS lets a third-party app be uninstall-protected.",
+            icon: "trash.slash.fill",
+            primaryLabel: "Open Settings",
+            primaryAction: openSettings
+        ) { EmptyView() }
+    }
+
+    private var stpConfirmSlide: some View {
+        OnboardingStep(
+            eyebrow: "Lock down · 4 of 4",
+            title: "All set?",
+            body: "Once you've done both steps in Settings, continue. You can revisit this later from Settings if you want to verify.",
+            icon: "checkmark.shield.fill",
+            primaryLabel: "I've finished both steps",
+            primaryAction: { go(to: .templates) }
+        ) { EmptyView() }
+    }
+
+    /// iOS provides no public URL to open Settings root or a specific
+    /// section from a third-party app — `App-prefs:` and similar were
+    /// blocked starting in iOS 16. `openSettingsURLString` opens the
+    /// Settings app to Brick's own page; the user backs out from there.
+    /// We acknowledge this in copy rather than pretending otherwise.
+    private func openSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
+    }
+
+    // MARK: - Templates / apps / done
+
     private var templateStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Starter templates")
-                .font(.title.bold())
-            Text("Pick any that fit your routine. You can skip and add custom blocks later.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            ScrollView {
-                VStack(spacing: 10) {
-                    ForEach(TemplateLibrary.all) { template in
-                        templateRow(template)
-                    }
+        OnboardingStep(
+            eyebrow: "Templates",
+            title: "Starter rhythms.",
+            body: "Pick any that match how you'd like Brick to fire automatically. You can skip this and build schedules from scratch later.",
+            errorText: errorText,
+            primaryLabel: selectedTemplates.isEmpty ? "Continue" : "Pick apps",
+            primaryAction: applyTemplatesAndAdvance,
+            secondaryLabel: "Skip",
+            secondaryAction: finish
+        ) {
+            VStack(spacing: Theme.Space.sm) {
+                ForEach(TemplateLibrary.all) { template in
+                    templateRow(template)
                 }
-            }
-
-            if let errorText {
-                Text(errorText).font(.footnote).foregroundStyle(.red)
-            }
-
-            HStack {
-                Button("Skip") { finish() }
-                    .buttonStyle(.bordered)
-                Spacer()
-                Button(selectedTemplates.isEmpty ? "Continue" : "Pick apps") {
-                    applyTemplatesAndAdvance()
-                }
-                .buttonStyle(.borderedProminent)
             }
         }
     }
@@ -141,53 +271,46 @@ struct OnboardingView: View {
                 .onAppear { finish() }
         } else {
             let current = appsQueueEntries[pickerIndex]
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Pick apps for \(current.blocklist.name)")
-                    .font(.title2.bold())
-                Text(current.template.description)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Text("Pick social, news, or anything you want shielded during this block. You can edit later.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Open app picker") {
+            OnboardingStep(
+                eyebrow: "Apps · \(pickerIndex + 1) of \(appsQueueEntries.count)",
+                title: "Pick apps for\n\(current.blocklist.name).",
+                body: current.template.description + " You can edit any of this from Blocklists later.",
+                icon: "square.stack",
+                errorText: errorText,
+                primaryLabel: "Open app picker",
+                primaryAction: {
                     pickerSelection = current.blocklist.selection
                     showingPicker = true
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-
-                Button("Skip for now") { advancePicker() }
-                    .buttonStyle(.bordered)
-            }
+                },
+                secondaryLabel: "Skip for now",
+                secondaryAction: { advancePicker() }
+            ) { EmptyView() }
             .familyActivityPicker(isPresented: $showingPicker, selection: $pickerSelection)
             .onChange(of: showingPicker) { _, presenting in
                 if !presenting {
-                    try? BlocklistStore(context: context)
-                        .updateSelection(current.blocklist, to: pickerSelection)
-                    advancePicker()
+                    do {
+                        try BlocklistStore(context: context)
+                            .updateSelection(current.blocklist, to: pickerSelection)
+                        errorText = nil
+                        advancePicker()
+                    } catch {
+                        errorText = "Couldn't save your apps: \(error.localizedDescription). Tap Skip for now to continue and try editing later from Blocklists."
+                    }
                 }
             }
         }
     }
 
     private var doneStep: some View {
-        VStack(spacing: 20) {
-            Spacer()
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.green)
-            Text("You're ready")
-                .font(.largeTitle.bold())
-            Text("Brick is active. Start a block now or let your schedules kick in.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Button("Open Brick") { finish() }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-        }
+        OnboardingStep(
+            eyebrow: "Done",
+            title: "You're ready.",
+            body: "Brick is active. Start a one-off block now from the Home tab or let your schedules kick in.",
+            icon: "checkmark.seal.fill",
+            errorText: finishError,
+            primaryLabel: finishError == nil ? "Open Brick" : "Continue anyway",
+            primaryAction: { finish() }
+        ) { EmptyView() }
     }
 
     // MARK: - Template row
@@ -198,7 +321,8 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(template.name).font(.headline)
+                    Text(template.name)
+                        .font(Theme.display(16, weight: .semibold))
                     Text(template.description)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -206,7 +330,7 @@ struct OnboardingView: View {
                 Spacer()
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    .foregroundStyle(isSelected ? Theme.accent : .secondary.opacity(0.7))
             }
             if isSelected && template.requiresDateRange {
                 let binding = rangeBinding(for: template)
@@ -225,11 +349,7 @@ struct OnboardingView: View {
                 .font(.footnote)
             }
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
+        .cardSurface(padding: Theme.Space.md)
         .contentShape(Rectangle())
         .onTapGesture { toggle(template) }
     }
@@ -298,32 +418,57 @@ struct OnboardingView: View {
         appsQueueEntries = entries
         pickerIndex = 0
         applier.syncAfterApply()
-        step = .apps
+        go(to: .apps)
     }
 
     private func advancePicker() {
         pickerIndex += 1
         if pickerIndex >= appsQueueEntries.count {
-            step = .done
+            go(to: .done)
         }
     }
 
     // MARK: - Finish
 
     private func finish() {
-        try? AppSettingsStore(context: context).markOnboardingComplete()
-        dismiss()
+        finishAttempts += 1
+        do {
+            try AppSettingsStore(context: context).markOnboardingComplete()
+            finishError = nil
+            dismiss()
+        } catch {
+            // `markOnboardingComplete` already wrote the UserDefaults
+            // backstop before throwing, so RootView will let the user reach
+            // the app even though the SwiftData save failed. After the user
+            // sees the error once, the next tap dismisses regardless.
+            print("[Brick] markOnboardingComplete failed: \(error)")
+            if finishAttempts >= 2 {
+                dismiss()
+                return
+            }
+            let nsError = error as NSError
+            finishError = """
+            Couldn't fully persist onboarding (\(nsError.domain) #\(nsError.code)) — \
+            \(nsError.localizedDescription). Tap Continue anyway to enter the app.
+            """
+            if step != .done { step = .done }
+        }
     }
 
     // MARK: - Auth
 
     private func requestAuth() async {
         do {
-            try await AuthorizationCenter.shared.requestAuthorization(for: .child)
+            try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
             authRequested = true
             authError = nil
         } catch {
-            authError = "Permission denied. You can grant it in Settings > Screen Time."
+            authError = """
+            Couldn't get Screen Time permission. Open Settings → Screen Time, \
+            make sure Screen Time is on, then tap Grant permission again. \
+            If you tap Don't Allow on the system dialog, return here and tap \
+            Grant permission to retry.
+            """
             authRequested = true
         }
     }

@@ -44,6 +44,8 @@ struct BlockNowSheet: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.canvas.ignoresSafeArea())
             .navigationTitle("Block Now")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

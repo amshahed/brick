@@ -30,7 +30,9 @@ struct RootView: View {
 
     private func checkLaunchState() {
         let current = try? AppSettingsStore(context: context).loadOrCreate()
-        if current?.hasCompletedOnboarding != true {
+        let onboardingDone = current?.hasCompletedOnboarding == true
+            || UserDefaults.standard.bool(forKey: AppSettingsStore.onboardingCompletedDefaultsKey)
+        if !onboardingDone {
             showingOnboarding = true
             showingSetup = false
         } else {

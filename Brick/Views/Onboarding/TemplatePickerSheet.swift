@@ -51,6 +51,8 @@ struct TemplatePickerSheet: View {
                     Text(errorText).font(.footnote).foregroundStyle(.red)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.canvas.ignoresSafeArea())
             .navigationTitle("Start from template")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

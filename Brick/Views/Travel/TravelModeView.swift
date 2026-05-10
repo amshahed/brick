@@ -19,6 +19,8 @@ struct TravelModeView: View {
                 inactiveSection
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Theme.canvas.ignoresSafeArea())
         .navigationTitle("Travel mode")
         .navigationBarTitleDisplayMode(.inline)
         .onReceive(tick) { now = $0 }

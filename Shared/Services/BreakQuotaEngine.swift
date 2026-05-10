@@ -10,11 +10,41 @@ enum BreakAvailability: Equatable {
 }
 
 struct BreakQuotaEngine {
-    static let windowDuration: TimeInterval = 60 * 60
-    static let quotaCap: TimeInterval = 10 * 60
-    static let coldStartDuration: TimeInterval = 25 * 60
-    static let overageHardCap: TimeInterval = 15 * 60
+    /// PRD values — used in production and in unit tests.
+    static let productionWindowDuration: TimeInterval = 60 * 60
+    static let productionQuotaCap: TimeInterval = 10 * 60
+    static let productionColdStartDuration: TimeInterval = 25 * 60
+    static let productionOverageHardCap: TimeInterval = 15 * 60
+
+    /// Scaled values for manual debug testing on a real device — keep the
+    /// shape of the PRD spec but compress the timeline so a full break +
+    /// cold-start + window-decay cycle plays out in minutes.
+    static let debugWindowDuration: TimeInterval = 3 * 60
+    static let debugQuotaCap: TimeInterval = 2 * 60
+    static let debugColdStartDuration: TimeInterval = 2 * 60
+    static let debugOverageHardCap: TimeInterval = 3 * 60
+
+    /// Live values consulted at every decision point. Mutated only by
+    /// `applyDebugTimings(_:)` at app launch (DEBUG builds) — production
+    /// always reads the PRD values.
+    static var windowDuration: TimeInterval = productionWindowDuration
+    static var quotaCap: TimeInterval = productionQuotaCap
+    static var coldStartDuration: TimeInterval = productionColdStartDuration
+    static var overageHardCap: TimeInterval = productionOverageHardCap
     static let overagePenaltyMultiplier: Double = 2
+
+    /// UserDefaults key for the DEBUG-only Settings toggle. Reading is
+    /// safe in production; the toggle UI is only built in DEBUG.
+    static let debugFastTimingsKey = "brick.debug.fastBreakTimings"
+
+    /// Swap the live constants between production and debug values. Call
+    /// once at app launch after reading the persisted preference.
+    static func applyDebugTimings(_ enabled: Bool) {
+        windowDuration = enabled ? debugWindowDuration : productionWindowDuration
+        quotaCap = enabled ? debugQuotaCap : productionQuotaCap
+        coldStartDuration = enabled ? debugColdStartDuration : productionColdStartDuration
+        overageHardCap = enabled ? debugOverageHardCap : productionOverageHardCap
+    }
 
     let context: ModelContext
     let clock: Clock
@@ -51,6 +81,7 @@ struct BreakQuotaEngine {
     @discardableResult
     func startBreak(
         appTokenData: Data,
+        targetKind: BreakRecord.TargetKind = .app,
         plannedDuration: TimeInterval = BreakQuotaEngine.quotaCap,
         isOverage: Bool = false,
         at instant: Date? = nil
@@ -61,6 +92,7 @@ struct BreakQuotaEngine {
             blockSession: session,
             startTime: now,
             appTokenData: appTokenData,
+            targetKind: targetKind,
             wasOverage: isOverage,
             plannedDuration: plannedDuration
         )
@@ -103,9 +135,10 @@ struct BreakQuotaEngine {
 
     func recordsInWindow(at now: Date) throws -> [BreakRecord] {
         let windowStart = now.addingTimeInterval(-Self.windowDuration)
+        let sentinel = Date.distantFuture
         let descriptor = FetchDescriptor<BreakRecord>(
             predicate: #Predicate { record in
-                record.endTime == nil || record.endTime! >= windowStart
+                (record.endTime ?? sentinel) >= windowStart
             }
         )
         return try context.fetch(descriptor)

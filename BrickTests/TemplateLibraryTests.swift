@@ -4,7 +4,11 @@ import XCTest
 
 final class TemplateLibraryTests: XCTestCase {
     func testHasFiveTemplates() {
+        #if DEBUG
+        XCTAssertEqual(TemplateLibrary.all.count, 6)
+        #else
         XCTAssertEqual(TemplateLibrary.all.count, 5)
+        #endif
     }
 
     func testTemplateIDsAreUnique() {

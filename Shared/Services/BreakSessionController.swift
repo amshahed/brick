@@ -12,10 +12,26 @@ import SwiftUI
 @MainActor
 final class BreakSessionController: ObservableObject {
 
+    /// Either an `ApplicationToken` (single-app break) or an
+    /// `ActivityCategoryToken` (whole-category break, for blocklists that
+    /// only contain category picks). Drives both the shield-override math
+    /// and the active-break view's label.
+    enum BreakTarget: Equatable {
+        case app(ApplicationToken)
+        case category(ActivityCategoryToken)
+
+        var kind: BreakRecord.TargetKind {
+            switch self {
+            case .app: return .app
+            case .category: return .category
+            }
+        }
+    }
+
     struct ActiveBreak: Identifiable, Equatable {
         let id: UUID
-        let appTokenData: Data
-        let appToken: ApplicationToken
+        let tokenData: Data
+        let target: BreakTarget
         let startedAt: Date
         let plannedEnd: Date
     }
@@ -25,14 +41,14 @@ final class BreakSessionController: ObservableObject {
     private let context: ModelContext
     private let engine: BreakQuotaEngine
     private let scheduleEngine: ScheduleEngine
-    private let shield: ShieldManager
+    private let shield: any ShieldApplying
     private let clock: Clock
     private var expiryTask: Task<Void, Never>?
 
     init(
         context: ModelContext,
         clock: Clock = SystemClock(),
-        shield: ShieldManager = ShieldManager()
+        shield: any ShieldApplying = ShieldManager()
     ) {
         self.context = context
         self.clock = clock
@@ -50,12 +66,45 @@ final class BreakSessionController: ObservableObject {
 
     // MARK: - Start
 
+    /// Per-app break. Existing API; preserved unchanged so callers (shield
+    /// handoff, picker app-row tap) keep working.
     func start(
         app: ApplicationToken,
         duration: TimeInterval,
         isOverage: Bool = false
     ) throws {
         let tokenData = try PropertyListEncoder().encode(app)
+        try startInternal(
+            target: .app(app),
+            tokenData: tokenData,
+            duration: duration,
+            isOverage: isOverage
+        )
+    }
+
+    /// Whole-category break for blocklists that only contain category picks.
+    /// Lifts the category from the shield for the break window; PRD story 15
+    /// is relaxed here in favour of "any break is better than no break".
+    func start(
+        category: ActivityCategoryToken,
+        duration: TimeInterval,
+        isOverage: Bool = false
+    ) throws {
+        let tokenData = try PropertyListEncoder().encode(category)
+        try startInternal(
+            target: .category(category),
+            tokenData: tokenData,
+            duration: duration,
+            isOverage: isOverage
+        )
+    }
+
+    private func startInternal(
+        target: BreakTarget,
+        tokenData: Data,
+        duration: TimeInterval,
+        isOverage: Bool
+    ) throws {
         let availability = try engine.canStartBreak()
         let cappedDuration: TimeInterval
         if isOverage {
@@ -84,15 +133,16 @@ final class BreakSessionController: ObservableObject {
 
         let record = try engine.startBreak(
             appTokenData: tokenData,
+            targetKind: target.kind,
             plannedDuration: cappedDuration,
             isOverage: isOverage
         )
-        applyOverride(excluding: app)
+        applyOverride(target: target)
 
         let active = ActiveBreak(
             id: record.id,
-            appTokenData: tokenData,
-            appToken: app,
+            tokenData: tokenData,
+            target: target,
             startedAt: record.startTime,
             plannedEnd: record.plannedEnd
         )
@@ -137,20 +187,32 @@ final class BreakSessionController: ObservableObject {
             return
         }
 
-        guard let token = try? PropertyListDecoder()
-            .decode(ApplicationToken.self, from: record.appTokenData) else {
-            closeRecord(id: record.id)
-            return
+        let target: BreakTarget
+        switch record.targetKind {
+        case .app:
+            guard let token = try? PropertyListDecoder()
+                .decode(ApplicationToken.self, from: record.appTokenData) else {
+                closeRecord(id: record.id)
+                return
+            }
+            target = .app(token)
+        case .category:
+            guard let token = try? PropertyListDecoder()
+                .decode(ActivityCategoryToken.self, from: record.appTokenData) else {
+                closeRecord(id: record.id)
+                return
+            }
+            target = .category(token)
         }
         let active = ActiveBreak(
             id: record.id,
-            appTokenData: record.appTokenData,
-            appToken: token,
+            tokenData: record.appTokenData,
+            target: target,
             startedAt: record.startTime,
             plannedEnd: record.plannedEnd
         )
         self.active = active
-        applyOverride(excluding: token)
+        applyOverride(target: target)
         scheduleExpiry(at: active.plannedEnd, recordID: active.id)
     }
 
@@ -188,12 +250,17 @@ final class BreakSessionController: ObservableObject {
         clearOverride()
     }
 
-    private func applyOverride(excluding app: ApplicationToken) {
+    private func applyOverride(target: BreakTarget) {
         guard let active = try? scheduleEngine.applyCurrentUnion() else { return }
         let selections = active.schedules.compactMap { $0.blocklist?.selection }
             + active.oneShots.compactMap { $0.blocklist?.selection }
         let union = FamilyActivitySelection.union(selections)
-        shield.apply(union: union, except: [app])
+        switch target {
+        case .app(let token):
+            shield.apply(union: union, exceptApps: [token], exceptCategories: [])
+        case .category(let token):
+            shield.apply(union: union, exceptApps: [], exceptCategories: [token])
+        }
     }
 
     private func clearOverride() {

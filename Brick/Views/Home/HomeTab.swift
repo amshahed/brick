@@ -32,7 +32,7 @@ struct HomeTab: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(spacing: Theme.Space.xl) {
                     if let travel = activeTravel {
                         TravelBanner(
                             period: travel,
@@ -67,8 +67,11 @@ struct HomeTab: View {
                         streak: streak
                     )
                 }
-                .padding()
+                .padding(.horizontal, Theme.Space.lg)
+                .padding(.top, Theme.Space.md)
+                .padding(.bottom, Theme.Space.xxl)
             }
+            .background(Theme.canvas.ignoresSafeArea())
             .navigationTitle("Brick")
             .task {
                 loadSettings()
@@ -177,18 +180,15 @@ struct HomeTab: View {
 
     @ViewBuilder
     private var breakButton: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: Theme.Space.sm) {
             Button {
                 breakPreselect = nil
                 showingBreak = true
             } label: {
                 Label(breakButtonLabel, systemImage: "pause.circle.fill")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .buttonStyle(.brickPrimary)
+            .opacity(isBreakAllowed ? 1.0 : 0.4)
             .disabled(!isBreakAllowed)
 
             if let note = breakHintNote {
@@ -232,33 +232,44 @@ struct HomeTab: View {
 
     @ViewBuilder
     private var idleHero: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "hand.raised.slash.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.tint)
-            Text("Ready to focus")
-                .font(.title2.bold())
-            Text("Start an immediate block or set up a schedule.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        VStack(alignment: .leading, spacing: Theme.Space.xl) {
+            // Eyebrow + headline. Big rounded type does the heavy lifting;
+            // the eyebrow gives the screen a quiet sense of place.
+            VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                SectionEyebrow(text: "Today")
+                Text("Nothing is\nblocked right now.")
+                    .font(Theme.display(34, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineSpacing(-2)
+                Text(idleSubcopy)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, Theme.Space.xs)
+            }
+
             Button {
                 showingBlockNow = true
             } label: {
-                Label("Block Now", systemImage: "bolt.fill")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                Label("Block now", systemImage: "bolt.fill")
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .buttonStyle(.brickPrimary)
+            .opacity(blocklists.isEmpty ? 0.4 : 1)
             .disabled(blocklists.isEmpty)
+
             if blocklists.isEmpty {
-                Text("Create a blocklist first.")
+                Text("Create a blocklist first in the Blocklists tab.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.top, 48)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, Theme.Space.lg)
+    }
+
+    private var idleSubcopy: String {
+        if blocklists.isEmpty {
+            return "Once you have a blocklist, you can start a one-off block or let a schedule kick in."
+        }
+        return "Start a one-off block, or let a schedule kick in."
     }
 }

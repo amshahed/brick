@@ -2,7 +2,9 @@
 
 ## Context
 
-The current app requests FamilyControls `.individual` authorization (see `BrickApp.init`) which is sufficient for the shield but does *not* enable uninstall protection. The issue requires `.child` mode — that's what tells the OS to require the user's Screen Time passcode before uninstalling the app, and it lets Brick gate Screen Time setting changes.
+The app requests FamilyControls `.individual` authorization (see `BrickApp.init`). This is the correct mode for self-management on a personal device — the shield (`ManagedSettings`) and `DeviceActivity` monitoring both function under `.individual`.
+
+`.child` mode is **not** used: it requires the device to be enrolled as a child in a Family Sharing arrangement, and requesting `.child` on a non-Family-Sharing device fails immediately with no system dialog. Earlier iterations of this plan tried `.child` to "engage uninstall protection," but uninstall protection is not actually tied to `.child` — it's a separate iOS Screen Time capability documented in issue #15's onboarding flow (Settings → Screen Time → Content & Privacy Restrictions → "Deleting Apps: Don't Allow," combined with the Screen Time passcode). Brick's role is in-app gating; the OS handles the uninstall side.
 
 The blocking machinery already knows when a schedule or one-shot is active: `ScheduleEngine.applyCurrentUnion(at:)` returns `ActiveSources { schedules, oneShots }`. A lighter, read-only predicate is all we need for "is this resource currently enforced?" — that lets us decide when to gate mutations.
 
@@ -112,9 +114,9 @@ On complete → writes `AppSettings.passcodeHash/salt/modeRaw`. Reused for first
 
 In `BrickApp.body`, wrap `RootView` with an `.onAppear`/`.task` that loads or creates the `AppSettings` singleton and presents `PasscodeSetupView` as a non-dismissible sheet when `passcodeHash == nil`. A lightweight `@StateObject var settingsBox: AppSettingsBox` holds the singleton and re-publishes changes.
 
-### `.child` authorization
+### FamilyControls authorization
 
-Swap `AuthorizationCenter.shared.requestAuthorization(for: .individual)` → `for: .child` in `BrickApp.init`. The spec is explicit that this is what enables uninstall protection. `.child` requires the Screen Time passcode to revoke, so the user commits by granting it.
+`BrickApp.init` requests `AuthorizationCenter.shared.requestAuthorization(for: .individual)`. This triggers the system permission dialog and grants the rights needed for `ManagedSettings` and `DeviceActivity` on the user's own device. Uninstall protection is not handled here — see issue #15's Screen Time passcode + "Don't Allow Deleting Apps" coaching step.
 
 ### Wiring gates into views
 
@@ -292,7 +294,7 @@ No tests for UI gate (SwiftUI-only behavior, deferred to manual verification).
 - **User quits app mid-gate.** Gate state is lost — re-presenting starts fresh. Acceptable.
 - **Schedule that transitions from active → inactive mid-edit.** The gate check happens on Save; if the user is lucky, the schedule is no longer active and the gate is skipped. That matches user intent.
 - **AppSettings row missing at first launch.** `AppSettingsStore.singleton(context:)` creates a row with all defaults (`passcodeHash == nil`) and the first-launch sheet is shown.
-- **Authorization for `.child` denied.** Log + continue. Uninstall protection is an OS-level bonus; the in-app gates still function. Do not block the UI on auth.
+- **Authorization for `.individual` denied.** Log + continue. The in-app gates still function (they don't depend on FamilyControls auth), but the shield won't apply because `ManagedSettings` requires the auth grant. Onboarding's auth step lets the user retry.
 - **Passcode change flow cancelled at second step.** Nothing persisted — old passcode remains.
 - **User cancels the first-launch setup sheet.** Sheet must be non-dismissible (`interactiveDismissDisabled(true)` + no cancel button).
 

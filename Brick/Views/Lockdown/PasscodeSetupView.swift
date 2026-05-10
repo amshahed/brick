@@ -8,6 +8,11 @@ struct PasscodeSetupView: View {
     }
 
     let purpose: Purpose
+    /// When true (default), wraps content in its own NavigationStack — used
+    /// when this view is presented as a modal sheet. Set to false when
+    /// embedded inside another NavigationStack (e.g., OnboardingView), so
+    /// the parent's toolbar/navbar is preserved.
+    var embedInNavigationStack: Bool = true
     var onComplete: () -> Void = {}
 
     @Environment(\.modelContext) private var context
@@ -27,26 +32,35 @@ struct PasscodeSetupView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                switch step {
-                case .chooseMode: chooseModeView
-                case .enterUser: enterUserView
-                case .confirmUser: confirmUserView
-                case .showGenerated: showGeneratedView
-                }
+        Group {
+            if embedInNavigationStack {
+                NavigationStack { content }
+            } else {
+                content
             }
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if purpose == .change {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { dismiss() }
-                    }
-                }
-            }
-            .interactiveDismissDisabled(purpose == .firstTime)
         }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        Group {
+            switch step {
+            case .chooseMode: chooseModeView
+            case .enterUser: enterUserView
+            case .confirmUser: confirmUserView
+            case .showGenerated: showGeneratedView
+            }
+        }
+        .navigationTitle(embedInNavigationStack ? title : "")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if embedInNavigationStack && purpose == .change {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .interactiveDismissDisabled(purpose == .firstTime)
     }
 
     private var title: String {
@@ -57,28 +71,21 @@ struct PasscodeSetupView: View {
     }
 
     private var chooseModeView: some View {
-        VStack(spacing: 24) {
-            VStack(spacing: 8) {
-                Image(systemName: "lock.shield")
-                    .font(.system(size: 44))
-                    .foregroundStyle(.tint)
-                Text("Lockdown passcode")
-                    .font(.title3.bold())
-                Text("Prevents you from disabling Brick during an active block. Pick the mode that fits your commitment style.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-            }
-
-            VStack(spacing: 12) {
+        OnboardingStep(
+            eyebrow: "Lockdown passcode",
+            title: "Pick a\ncommitment mode.",
+            body: "The passcode gates disabling blocks, editing the active blocklist, and cancelling a one-shot. Pick how hard it should be to bypass.",
+            icon: "lock.shield"
+        ) {
+            VStack(spacing: Theme.Space.sm) {
                 Button {
                     mode = .userChosen
                     step = .enterUser
                 } label: {
                     row(
                         title: "Pick your own passcode",
-                        subtitle: "4–6 digit code you'll remember."
+                        subtitle: "4–6 digit code you'll remember.",
+                        emphasis: false
                     )
                 }
                 .buttonStyle(.plain)
@@ -90,138 +97,132 @@ struct PasscodeSetupView: View {
                 } label: {
                     row(
                         title: "Generate random passcode",
-                        subtitle: "6-digit code — write it down somewhere inconvenient."
+                        subtitle: "6-digit code. Write it somewhere inconvenient. Higher friction.",
+                        emphasis: true
                     )
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal)
-
-            Spacer()
         }
-        .padding(.top, 24)
     }
 
     private var enterUserView: some View {
-        VStack(spacing: 16) {
-            Text("Enter a 4–6 digit passcode")
-                .font(.headline)
-            SecureField("Passcode", text: $code1)
-                .keyboardType(.numberPad)
-                .font(.title2.monospacedDigit())
-                .multilineTextAlignment(.center)
-                .padding()
-                .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 12))
-                .padding(.horizontal)
-                .onChange(of: code1) { _, new in
-                    code1 = String(new.filter { $0.isNumber }.prefix(6))
-                    errorText = nil
-                }
-
-            if let errorText {
-                Text(errorText).font(.footnote).foregroundStyle(.red)
-            }
-
-            Button("Next") {
+        OnboardingStep(
+            eyebrow: "Set passcode · 1 of 2",
+            title: "Pick a 4–6 digit code.",
+            body: "You'll need this to disable blocks, edit an active blocklist, or cancel an active one-shot.",
+            errorText: errorText,
+            primaryLabel: "Next",
+            primaryAction: {
                 guard PasscodeService.isValidUserChosen(code1) else {
                     errorText = "Passcode must be 4–6 digits."
                     return
                 }
                 step = .confirmUser
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(code1.count < 4)
-
-            Spacer()
+            },
+            primaryDisabled: code1.count < 4
+        ) {
+            passcodeField($code1, placeholder: "Passcode")
         }
-        .padding(.top, 24)
     }
 
     private var confirmUserView: some View {
-        VStack(spacing: 16) {
-            Text("Re-enter your passcode")
-                .font(.headline)
-            SecureField("Confirm", text: $code2)
-                .keyboardType(.numberPad)
-                .font(.title2.monospacedDigit())
-                .multilineTextAlignment(.center)
-                .padding()
-                .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 12))
-                .padding(.horizontal)
-                .onChange(of: code2) { _, new in
-                    code2 = String(new.filter { $0.isNumber }.prefix(6))
-                    errorText = nil
-                }
-
-            if let errorText {
-                Text(errorText).font(.footnote).foregroundStyle(.red)
-            }
-
-            Button("Save passcode") {
+        OnboardingStep(
+            eyebrow: "Set passcode · 2 of 2",
+            title: "Re-enter to confirm.",
+            errorText: errorText,
+            primaryLabel: "Save passcode",
+            primaryAction: {
                 guard code1 == code2 else {
                     errorText = "Passcodes don't match."
                     return
                 }
                 save(code: code1)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(code2.count < 4)
-
-            Spacer()
+            },
+            primaryDisabled: code2.count < 4
+        ) {
+            passcodeField($code2, placeholder: "Confirm")
         }
-        .padding(.top, 24)
+    }
+
+    private func passcodeField(_ binding: Binding<String>, placeholder: String) -> some View {
+        SecureField(placeholder, text: binding)
+            .textContentType(.password)
+            .keyboardType(.numberPad)
+            .font(Theme.statNumber(28, weight: .semibold))
+            .multilineTextAlignment(.center)
+            .padding(.vertical, Theme.Space.lg)
+            .padding(.horizontal, Theme.Space.xl)
+            .background(
+                RoundedRectangle(cornerRadius: Theme.Radius.button, style: .continuous)
+                    .fill(Color.primary.opacity(0.05))
+            )
+            .onChange(of: binding.wrappedValue) { old, new in
+                let sanitized = String(new.filter { $0.isNumber }.prefix(6))
+                if sanitized != new { binding.wrappedValue = sanitized }
+                if sanitized.count > old.count { errorText = nil }
+            }
     }
 
     private var showGeneratedView: some View {
-        VStack(spacing: 20) {
-            Text("Your passcode")
-                .font(.headline)
-            Text(generatedCode)
-                .font(.system(size: 44, weight: .bold, design: .monospaced))
-                .tracking(8)
-                .padding()
-                .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 12))
-            Text("Write this down and put it somewhere inconvenient. You'll need it to disable blocks, edit active blocklists, or uninstall Brick.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
-            if let errorText {
-                Text(errorText).font(.footnote).foregroundStyle(.red)
+        OnboardingStep(
+            eyebrow: "Your passcode",
+            title: "Write this somewhere\ninconvenient.",
+            body: "You'll need this to disable blocks, edit active blocklists, or cancel a one-shot. Brick will not show it to you again.",
+            errorText: errorText,
+            primaryLabel: "I wrote it down",
+            primaryAction: { save(code: generatedCode) }
+        ) {
+            VStack(spacing: Theme.Space.md) {
+                Text(generatedCode)
+                    .font(Theme.statNumber(40, weight: .semibold))
+                    .tracking(8)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Theme.Space.lg)
+                    .padding(.horizontal, Theme.Space.xl)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                            .fill(Theme.accentMuted)
+                    )
             }
-
-            Button("I wrote it down") {
-                save(code: generatedCode)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-
-            Spacer()
         }
-        .padding(.top, 24)
     }
 
-    private func row(title: String, subtitle: String) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.headline).foregroundStyle(.primary)
-                Text(subtitle).font(.footnote).foregroundStyle(.secondary)
+    private func row(title: String, subtitle: String, emphasis: Bool) -> some View {
+        HStack(alignment: .top, spacing: Theme.Space.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(emphasis ? Theme.accentMuted : Color.primary.opacity(0.05))
+                    .frame(width: 40, height: 40)
+                Image(systemName: emphasis ? "dice" : "keyboard")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(emphasis ? Theme.accent : .secondary)
             }
-            Spacer()
-            Image(systemName: "chevron.right").foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(Theme.display(16, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: Theme.Space.sm)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary.opacity(0.6))
         }
-        .padding()
-        .background(Color.secondary.opacity(0.08), in: .rect(cornerRadius: 12))
+        .cardSurface(padding: Theme.Space.md)
     }
 
     private func save(code: String) {
         do {
             try AppSettingsStore(context: context).setPasscode(code, mode: mode)
+            // Caller's onComplete decides whether to dismiss this view (via
+            // its sheet binding) or advance an embedded onboarding state.
+            // Don't call `dismiss()` here — when this view is embedded in
+            // OnboardingView (a fullScreenCover), `dismiss()` bubbles up to
+            // the cover and tears down the entire onboarding flow.
             onComplete()
-            dismiss()
         } catch {
             errorText = "Couldn't save passcode: \(error.localizedDescription)"
         }

@@ -14,10 +14,10 @@ Target user: the author, on personal iPhone. Single device, fully local data, no
 
 ## Architecture
 
-**Hybrid shield + Focus:**
+**Shield + user-configured Focus:**
 - **Shield layer**: `FamilyControls` + `ManagedSettings` + `DeviceActivity` for app blocking on schedules.
-- **Focus layer**: user creates a companion Focus mode in iOS Settings with allowed contacts. App activates that Focus alongside the shield when a block starts. Focus is **optional** — blocks work as a pure shield without it.
-- **Why hybrid**: iOS does not let third-party apps read other apps' notifications. The Focus layer is the only iOS path to contact-level call passthrough. UI frames this as "allowed contacts", not "app notifications."
+- **Focus layer (user-configured, not app-driven)**: iOS does not allow third-party apps to programmatically activate a Focus mode. The user creates a companion "Brick" Focus in iOS Settings with allowed contacts and wires activation themselves via either (a) the Focus's own Schedule, mirroring their Brick schedule (recommended for recurring blocks), or (b) a Shortcuts Personal Automation triggered by Brick's app open (recommended for one-shot blocks). Brick code does nothing about Focus state. Focus is **optional** — blocks work as a pure shield without it.
+- **Why this layer at all**: iOS does not let third-party apps read other apps' notifications. The Focus layer is the only iOS path to contact-level call passthrough. UI frames this as "allowed contacts", not "app notifications."
 
 ## Core Mechanics
 
@@ -50,24 +50,38 @@ Target user: the author, on personal iPhone. Single device, fully local data, no
 - **Overage cap**: max 15 min of overage per block.
 - Future: Beeminder/Stickk integration as a v2 third deterrent.
 
-### Lockdown
-- **`.child` mode** via `FamilyControls` — uninstall and ScreenTime changes require passcode.
-- **Passcode required at onboarding** (no skip). User chooses:
+### Lockdown — two passcodes
+- **FamilyControls `.individual` authorization**: required for the shield to function (apply category/app blocks via `ManagedSettings`). Granted via the system permission dialog at onboarding. We do **not** use `.child` mode — that requires the device to be enrolled as a child in a Family Sharing arrangement, which fails immediately on a personal device.
+- **Brick passcode (local, in-app)**: required at onboarding (no skip). Stored as salted SHA-256 in SwiftData. User chooses:
   - Pick your own passcode (lighter commitment).
   - App generates a random passcode — user saves it somewhere inconvenient (stronger commitment).
-- **Scope during active block (minimal)**: can't uninstall, can't disable the active block, can't edit the active blocklist. Everything else (future schedules, other blocklists, stats) remains editable.
-- **Known ceiling**: Apple ID reset of ScreenTime passcode is always available (~5-10 min). Accepted.
+- **iOS Screen Time passcode + "Don't Allow Deleting Apps" (system-level)**: onboarding deep-links to Settings → Screen Time and walks the user through two steps:
+  1. Set the Screen Time passcode (Settings → Screen Time → Lock Screen Time Settings).
+  2. Settings → Screen Time → Content & Privacy Restrictions → on → iTunes & App Store Purchases → Deleting Apps → Don't Allow.
+  Brick cannot set either of these programmatically — the user does it in iOS Settings. Recommended: same passcode value as Brick passcode for simplicity, or a different value for stronger commitment. The "Don't Allow Deleting Apps" toggle is what actually blocks uninstall; the Screen Time passcode is what unlocks it.
+- **Trade-off**: "Don't Allow Deleting Apps" applies to *all* apps, not just Brick. That's iOS's design — there's no per-app uninstall lock outside of Family Sharing's `.child` mode.
+- **Scope during active block (minimal)**:
+  - **In-app actions** gated by Brick passcode: disable active schedule, edit active blocklist, cancel active one-shot.
+  - **Uninstall** gated by iOS Screen Time passcode (when "Don't Allow Deleting Apps" is on).
+  - Everything else (future schedules, other blocklists, stats) remains editable.
+- **Known ceiling**: Apple ID reset of Screen Time passcode is always available (~5-10 min). Accepted.
 
 ### Travel Mode
 - **Activation**: manual date range (enter start/end before trip), or quick toggle ("I'm traveling now").
 - **Effect**: suspends ALL schedules. No blocks fire. For lighter travel blocking, user creates a separate bounded "vacation" schedule.
 - **End**: dated travel auto-resumes schedules. Toggle-based nudges daily, escalates after 7 days. Visible banner in main UI.
 
-### Focus Onboarding
+### Focus Onboarding (documentation-only)
 - **Optional, not gated.** Blocks work without Focus.
 - **Repeated-use nudge** (count-based): after N blocks without Focus configured, show a nudge card. No first-block nudge.
-- **Setup flow**: deep-links to iOS Settings -> Focus, with instructions. App tracks "Focus onboarding completed" flag internally.
-- **Emergency bypass** (Apple's repeated-call rule) is always active regardless.
+- **Setup flow** — three ordered steps in `FocusOnboardingView`:
+  1. **Create the Focus.** Deep-link to iOS Settings → Focus → "+" → name it "Brick" → add Allowed People (family, on-call, partner).
+  2. **Choose how Focus turns on.** Two paths, framed by use case:
+     - *For recurring blocks (recommended)*: in the Brick Focus → Add Schedule, mirror the days/times of the user's Brick schedule. iOS handles on/off automatically.
+     - *For one-shot blocks*: in the Shortcuts app, create a Personal Automation: "When App is Opened: Brick" → "Set Focus: Brick — Turn On." Open Shortcuts deep-link.
+  3. **Emergency bypass** (Apple's repeated-call-within-3-min rule) is automatic — no setup.
+- **Tracking**: `AppSettings.focusOnboardingCompleted` flips on user confirmation ("I've set up Focus" toggle). Brick does not verify the user actually configured iOS — the flag is a self-report.
+- **No runtime FocusManager**. Brick code never touches Focus state. iOS toggles Focus based on whichever trigger the user chose in step 2.
 
 ## UX
 
@@ -94,7 +108,7 @@ Target user: the author, on personal iPhone. Single device, fully local data, no
 - **Language**: Swift
 - **UI**: SwiftUI
 - **Blocking**: `FamilyControls`, `ManagedSettings`, `DeviceActivity` frameworks
-- **Focus integration**: `INSetFocusStatusIntent` / Shortcuts
+- **Focus integration**: documentation-only (user wires Focus Schedule or a Shortcuts Personal Automation in iOS — no Brick code path)
 - **Persistence**: SwiftData (on-device, no backend)
 - **Notifications**: `UNUserNotificationCenter`
 - **Minimum iOS**: 17.0 (for stable FamilyControls + SwiftData)

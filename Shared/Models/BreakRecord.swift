@@ -7,7 +7,13 @@ final class BreakRecord {
     var blockSession: BlockSession?
     var startTime: Date
     var endTime: Date?
+    /// Encoded `ApplicationToken` when `targetKind == .app`, encoded
+    /// `ActivityCategoryToken` when `targetKind == .category`. Stored as
+    /// opaque bytes so the model stays SwiftData-friendly.
     var appTokenData: Data
+    /// "app" or "category". Defaults to "app" so existing rows keep the
+    /// per-app interpretation across the additive schema change.
+    var targetKindRaw: String = TargetKind.app.rawValue
     var wasOverage: Bool
     var plannedDuration: TimeInterval
 
@@ -17,6 +23,7 @@ final class BreakRecord {
         startTime: Date,
         endTime: Date? = nil,
         appTokenData: Data,
+        targetKind: TargetKind = .app,
         wasOverage: Bool = false,
         plannedDuration: TimeInterval = BreakQuotaEngine.quotaCap
     ) {
@@ -25,8 +32,19 @@ final class BreakRecord {
         self.startTime = startTime
         self.endTime = endTime
         self.appTokenData = appTokenData
+        self.targetKindRaw = targetKind.rawValue
         self.wasOverage = wasOverage
         self.plannedDuration = plannedDuration
+    }
+
+    enum TargetKind: String {
+        case app
+        case category
+    }
+
+    var targetKind: TargetKind {
+        get { TargetKind(rawValue: targetKindRaw) ?? .app }
+        set { targetKindRaw = newValue.rawValue }
     }
 
     var plannedEnd: Date { startTime.addingTimeInterval(plannedDuration) }

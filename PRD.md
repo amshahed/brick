@@ -16,9 +16,9 @@ A native iOS app (Swift/SwiftUI) that blocks distracting apps using Apple's `Fam
 
 **Structured break budget**: Instead of unlimited "take a break," Brick enforces a rolling 10-minute quota within any 60-minute window. Each block begins with a 25-minute cold-start period where no breaks are allowed. Breaks require picking a single app to unshield — no app-hopping. Exceeding the quota requires a deliberate overage ritual (typed justification + wait) and incurs a 2x time penalty extending the block. After 15 minutes of overage in a single block, the user is fully locked out for the remainder.
 
-**Critical call passthrough**: Brick activates a companion iOS Focus mode alongside the shield. The user configures allowed contacts in iOS Settings. Important people can call through during a block without disabling it. Focus is optional — blocks work as a pure shield without it.
+**Critical call passthrough**: The user pairs Brick with a companion iOS Focus mode (named "Brick") that they create themselves and populate with allowed contacts. iOS does not allow third-party apps to activate Focus modes programmatically, so the user wires Focus on/off via either the Focus's own Schedule (mirroring their Brick schedule) or a Shortcuts Personal Automation triggered by Brick's app open. Brick's role is teaching the user how to set this up; once configured, iOS handles the toggling. Focus is optional — blocks work as a pure shield without it.
 
-The app is fully local (no backend), targets iOS 17+, and uses SwiftData for persistence. It includes a lockdown mode (`.child` FamilyControls) with a passcode gate to prevent impulsive uninstallation or block disabling.
+The app is fully local (no backend), targets iOS 17+, and uses SwiftData for persistence. FamilyControls authorization is requested in `.individual` mode (the path for self-management on a personal device; `.child` mode requires a Family Sharing parent–child relationship that does not exist on a typical personal device). Lockdown is a two-passcode model: a Brick app passcode (stored locally) gates in-app actions during active blocks, and the user is guided to set up iOS itself to block uninstallation — by enabling the Screen Time passcode plus turning on Settings → Screen Time → Content & Privacy Restrictions → "Deleting Apps: Don't Allow." This is the iOS-supported mechanism for preventing app deletion without a passcode. The two passcode values can match for simplicity or differ for stronger commitment.
 
 ## User Stories
 
@@ -43,35 +43,36 @@ The app is fully local (no backend), targets iOS 17+, and uses SwiftData for per
 19. As a user, I want a hard lockout after 15 minutes of overage in a single block, so that there is an absolute ceiling on how much I can override the system.
 20. As a user, I want to see a shield overlay when I open a blocked app, so that the block is clearly enforced.
 21. As a user, I want the shield overlay to offer a "Take a break" option that routes to the main app, so that the break flow is discoverable.
-22. As a user, I want to optionally configure a companion iOS Focus mode with allowed contacts, so that important people can call me during a block.
+22. As a user, I want to optionally pair Brick with a companion iOS Focus mode (containing my allowed contacts), so that important people can call me during a block.
 23. As a user, I want Focus to be optional and not gate any blocking functionality, so that I can use Brick as a pure shield if I prefer.
-24. As a user, I want Brick to nudge me about Focus setup after N blocks without it configured, so that I'm reminded of the feature without being pressured on first use.
-25. As a user, I want emergency bypass (Apple's repeated-call rule) to always be active, so that truly urgent calls get through regardless of Focus configuration.
-26. As a user, I want to set a lockdown passcode at onboarding (required, no skip), so that I can't impulsively disable blocks.
-27. As a user, I want the option to pick my own passcode or have the app generate a random one I store somewhere inconvenient, so that I can choose my commitment level.
-28. As a user, I want the passcode to be required to uninstall the app, so that I can't bypass the system by deleting and reinstalling.
-29. As a user, I want lockdown during an active block to prevent uninstalling, disabling the block, or editing the active blocklist, so that the block is truly enforced.
-30. As a user, I want to still be able to edit future schedules, other blocklists, and view stats during an active block, so that lockdown is minimal and non-frustrating.
-31. As a user, I want to activate travel mode with a manual date range or a quick toggle, so that all schedules are suspended while I'm traveling.
-32. As a user, I want dated travel mode to automatically resume schedules when the travel period ends, so that I don't forget to re-enable blocking.
-33. As a user, I want toggle-based travel mode to nudge me daily and escalate after 7 days, so that I don't accidentally leave it on forever.
-34. As a user, I want a visible banner in the main UI when travel mode is active, so that I'm always aware my blocks are suspended.
-35. As a user, I want to see blocked time today and this week on the home screen, so that I have a quick sense of how much focus time I've accumulated.
-36. As a user, I want to see my break quota usage (X/10 min) on the home screen, so that I know how much break time I have left.
-37. As a user, I want to see my current streak of on-quota days on the home screen, so that I'm motivated to maintain good behavior.
-38. As a user, I want to be notified when a block starts with cold-start information, so that I know my block is active and when breaks become available.
-39. As a user, I want to be notified when a block ends with a summary of blocked time, so that I get positive reinforcement.
-40. As a user, I want to be notified 1 minute before a break expires, so that I can wrap up and return to the blocked app gracefully.
-41. As a user, I want to be notified when an overage penalty extends my block, so that I understand the consequence immediately.
-42. As a user, I want starter templates at onboarding (Morning Focus, Deep Work, Night Wind-Down, Exam Mode, Vacation Light), so that I can get started quickly without designing schedules from scratch.
-43. As a user, I want templates to create a scaffold (name + schedule) that I fill in with apps via the system picker, so that templates are useful starting points rather than rigid presets.
-44. As a user, I want to browse templates post-onboarding from the "New blocklist" flow, so that I can use them any time, not just at first launch.
+24. As a user, I want Brick to walk me through Focus setup honestly — explaining that iOS controls Focus activation via either a Focus Schedule or a Shortcuts Personal Automation — so that I can pick the path that fits my schedules.
+25. As a user, I want Brick to nudge me about Focus setup after N blocks without it configured, so that I'm reminded of the feature without being pressured on first use.
+26. As a user, I want emergency bypass (Apple's repeated-call rule) to always be active, so that truly urgent calls get through regardless of Focus configuration.
+27. As a user, I want to set a Brick passcode at onboarding (required, no skip), so that I can't impulsively disable blocks from inside the app during an active block.
+28. As a user, I want the option to pick my own Brick passcode or have the app generate a random one I store somewhere inconvenient, so that I can choose my commitment level.
+29. As a user, I want onboarding to walk me through (a) setting an iOS Screen Time passcode and (b) turning on Content & Privacy Restrictions → "Deleting Apps: Don't Allow," so that uninstalling Brick during a block requires the Screen Time passcode — Brick alone cannot block uninstallation.
+30. As a user, I want lockdown during an active block to prevent uninstalling, disabling the block, or editing the active blocklist, so that the block is truly enforced.
+31. As a user, I want to still be able to edit future schedules, other blocklists, and view stats during an active block, so that lockdown is minimal and non-frustrating.
+32. As a user, I want to activate travel mode with a manual date range or a quick toggle, so that all schedules are suspended while I'm traveling.
+33. As a user, I want dated travel mode to automatically resume schedules when the travel period ends, so that I don't forget to re-enable blocking.
+34. As a user, I want toggle-based travel mode to nudge me daily and escalate after 7 days, so that I don't accidentally leave it on forever.
+35. As a user, I want a visible banner in the main UI when travel mode is active, so that I'm always aware my blocks are suspended.
+36. As a user, I want to see blocked time today and this week on the home screen, so that I have a quick sense of how much focus time I've accumulated.
+37. As a user, I want to see my break quota usage (X/10 min) on the home screen, so that I know how much break time I have left.
+38. As a user, I want to see my current streak of on-quota days on the home screen, so that I'm motivated to maintain good behavior.
+39. As a user, I want to be notified when a block starts with cold-start information, so that I know my block is active and when breaks become available.
+40. As a user, I want to be notified when a block ends with a summary of blocked time, so that I get positive reinforcement.
+41. As a user, I want to be notified 1 minute before a break expires, so that I can wrap up and return to the blocked app gracefully.
+42. As a user, I want to be notified when an overage penalty extends my block, so that I understand the consequence immediately.
+43. As a user, I want starter templates at onboarding (Morning Focus, Deep Work, Night Wind-Down, Exam Mode, Vacation Light), so that I can get started quickly without designing schedules from scratch.
+44. As a user, I want templates to create a scaffold (name + schedule) that I fill in with apps via the system picker, so that templates are useful starting points rather than rigid presets.
+45. As a user, I want to browse templates post-onboarding from the "New blocklist" flow, so that I can use them any time, not just at first launch.
 
 ## Implementation Decisions
 
-### Architecture: Hybrid Shield + Focus
+### Architecture: Shield + User-Configured Focus
 - **Shield layer**: `FamilyControls` + `ManagedSettings` + `DeviceActivity` for app blocking.
-- **Focus layer**: Activates a companion iOS Focus mode alongside the shield for contact-level call passthrough. Optional — blocks function without it.
+- **Focus layer (user-configured, not app-driven)**: iOS does not allow third-party apps to programmatically activate a Focus mode. Brick's Focus integration is therefore documentation-only: onboarding teaches the user to (1) create a "Brick" Focus in iOS Settings with their allowed contacts, and (2) wire activation via either the Focus's own Schedule (mirroring their Brick schedule — recommended for recurring blocks) or a Shortcuts Personal Automation triggered by Brick's app open (recommended for one-shot blocks). Brick code does nothing about Focus state; iOS handles the toggling once the user has configured the trigger. Optional — blocks function without it.
 - iOS does not let third-party apps read other apps' notifications; Focus is the only path to contact-level call passthrough.
 
 ### Major Modules
@@ -84,9 +85,9 @@ The app is fully local (no backend), targets iOS 17+, and uses SwiftData for per
 
 4. **BreakQuotaEngine** — Core state machine for the break budget. Implements: rolling 60-min window with 10-min cap, 25-min cold-start, single-app unshield, overage gate (>=80 char justification + 20s wait), 2x block extension penalty, 15-min overage hard lockout. Operates on `BreakRecord` history. The rolling quota is global — continuous across blocks and gaps, never reset.
 
-5. **FocusManager** — Activates/deactivates the companion iOS Focus mode alongside blocks. Gracefully no-ops if Focus isn't configured.
+5. **FocusOnboarding** — Documentation-only flow that walks the user through creating a "Brick" Focus and wiring activation via Focus Schedule or Shortcuts Personal Automation. No runtime service component — iOS handles Focus toggling once the user has configured the trigger.
 
-6. **LockdownManager** — Passcode storage (local, not Keychain), `.child` mode enforcement. Gates: edits to active blocklist, disabling active block, and app deletion during active blocks. Does not gate: future schedules, other blocklists, stats, settings.
+6. **LockdownManager** — Two-passcode model. Brick's app passcode (stored locally, not Keychain) gates in-app actions during active blocks: edits to active blocklist, disabling active block, canceling an active one-shot. Uninstall protection is OS-level: onboarding walks the user through enabling the iOS Screen Time passcode and turning on Content & Privacy Restrictions → "Deleting Apps: Don't Allow." Once configured, iOS requires the Screen Time passcode to delete any app (Brick included). Brick cannot enforce uninstall protection on its own and does not use `.child` FamilyControls mode (which requires Family Sharing). Does not gate: future schedules, other blocklists, stats, settings.
 
 7. **NotificationService** — Schedules the four notification types: block starting (with cold-start info), block ending (with time summary), break expiring (1 min warning), overage penalty applied. Does NOT notify on cold-start ending (inviting breaks is counter-productive).
 
@@ -106,8 +107,10 @@ The app is fully local (no backend), targets iOS 17+, and uses SwiftData for per
 - `AppSettings` — Focus onboarding completed flag, passcode mode, completed blocks count.
 
 ### Key Design Decisions
-- **Passcode not stored in Keychain** — stored locally via SwiftData or UserDefaults.
-- **Passcode required to delete the app** (in addition to active-block restrictions).
+- **Brick passcode not stored in Keychain** — stored locally via SwiftData or UserDefaults. It is a commitment device, not a credential.
+- **FamilyControls authorization is `.individual`**, not `.child`. `.child` mode requires Family Sharing parent–child setup that doesn't exist on a typical personal device — requesting it fails immediately without any system dialog. `.individual` is the mode for self-management.
+- **Uninstall protection is OS-level**: not handled by FamilyControls auth mode at all. Onboarding walks the user through (a) enabling the Screen Time passcode and (b) turning on Content & Privacy Restrictions → "Deleting Apps: Don't Allow." This iOS-level setting blocks deletion of any app (Brick included) without the Screen Time passcode. Recommended: same passcode value as Brick passcode for simplicity, or a different value for stronger commitment.
+- **Focus integration is user-configured, not app-driven**. Brick teaches; iOS toggles. No runtime Focus state is managed by Brick.
 - **One-shot blocks pick from existing blocklists** and union with any active scheduled blocks.
 - **Rolling quota is truly global** — never resets between blocks. A break at 2:00pm during Block A counts against Block B if it starts within 60 minutes.
 - **Cold-start only arms on transition** from no-active-block to active-block (overlapping schedule starts don't re-trigger).
@@ -141,11 +144,11 @@ The app is fully local (no backend), targets iOS 17+, and uses SwiftData for per
 
 ### Not Unit-Tested (Manual On-Device Testing)
 - Shield appearing on blocked apps (`FamilyControls` integration).
-- Focus mode activation/deactivation.
+- Focus on/off behavior (user-configured via Focus Schedule or Shortcuts; verify allowed contacts ring through during a block).
 - Notification delivery timing.
 - `FamilyActivityPicker` app selection flow.
-- Lockdown / `.child` mode enforcement.
-- Passcode gate for app deletion.
+- Lockdown / `.child` mode enforcement, including uninstall blocked by Screen Time passcode.
+- Brick passcode gate for in-app actions.
 
 ## Out of Scope
 
@@ -159,7 +162,8 @@ The app is fully local (no backend), targets iOS 17+, and uses SwiftData for per
 
 ## Further Notes
 
-- **Known ceiling on lockdown**: Apple ID reset of ScreenTime passcode is always available (~5-10 min process). This is accepted as an inherent platform limitation.
+- **Known ceiling on lockdown**: Apple ID reset of Screen Time passcode is always available (~5-10 min process). This is accepted as an inherent platform limitation.
 - **FamilyActivityPicker constraint**: iOS provides no API to enumerate installed apps or pre-select categories. All app selection must go through Apple's picker UI.
+- **iOS does not allow third-party Focus activation**: `INSetFocusStatusIntent` reports an app's own focus state; it does not flip a system Focus. There is no AppIntents or SiriKit path for an app to activate a user's Focus mode. The only triggers iOS accepts are user-driven (manual toggle, Focus Schedule, or a Personal Automation in Shortcuts). Brick's Focus integration is therefore documentation-only.
 - **Focus onboarding is count-based**: nudge appears after N blocks without Focus configured. No nudge on first block to avoid overwhelming new users.
 - **Template schedules**: Morning Focus (6-10am Mon-Fri), Deep Work (9-5 Mon-Fri), Night Wind-Down (10pm-7am daily), Exam Mode (8am-10pm bounded dates), Vacation Light (10am-8pm bounded dates).

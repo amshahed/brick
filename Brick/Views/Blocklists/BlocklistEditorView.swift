@@ -19,7 +19,10 @@ struct BlocklistEditorView: View {
     @State private var errorMessage: String?
     @State private var showUnlockGate = false
     @State private var isUnlocked = false
-    @State private var lockChecked = false
+    @State private var isLocked = false
+    @State private var showDeleteConfirm = false
+    @State private var showDeleteGate = false
+    @State private var pendingCascadeDelete: [String]?
 
     var body: some View {
         Form {
@@ -56,7 +59,23 @@ struct BlocklistEditorView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            if case .edit = mode {
+                Section {
+                    Button(role: .destructive) {
+                        requestDelete()
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text("Delete blocklist")
+                            Spacer()
+                        }
+                    }
+                }
+            }
         }
+        .scrollContentBackground(.hidden)
+        .background(Theme.canvas.ignoresSafeArea())
         .navigationTitle(mode.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -76,12 +95,39 @@ struct BlocklistEditorView: View {
         ) {
             isUnlocked = true
         }
+        .passcodeGate(
+            title: "Delete active blocklist",
+            reason: "This blocklist is currently being enforced. Enter your passcode to delete it.",
+            isPresented: $showDeleteGate
+        ) {
+            performDelete()
+        }
+        .confirmationDialog(
+            deleteConfirmTitle,
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { performDelete(cascade: true) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let names = pendingCascadeDelete, !names.isEmpty {
+                Text("Also deletes schedules: \(names.joined(separator: ", ")).")
+            } else {
+                Text("This can't be undone.")
+            }
+        }
     }
 
     private var isBlockedByGate: Bool {
         guard case .edit = mode else { return false }
-        guard lockChecked else { return false }
-        return !isUnlocked
+        return isLocked && !isUnlocked
+    }
+
+    private var deleteConfirmTitle: String {
+        if case .edit(let blocklist) = mode {
+            return "Delete \"\(blocklist.name)\"?"
+        }
+        return "Delete blocklist?"
     }
 
     private var trimmedName: String {
@@ -99,11 +145,33 @@ struct BlocklistEditorView: View {
         if case .edit(let blocklist) = mode {
             name = blocklist.name
             selection = blocklist.selection
-            let locked = LockdownManager(context: context).isLocked(.editBlocklist(blocklist))
-            lockChecked = true
-            if locked && !isUnlocked {
+            isLocked = LockdownManager(context: context).isLocked(.editBlocklist(blocklist))
+            if isLocked && !isUnlocked {
                 showUnlockGate = true
             }
+        }
+    }
+
+    private func requestDelete() {
+        guard case .edit(let blocklist) = mode else { return }
+        if LockdownManager(context: context).isLocked(.deleteBlocklist(blocklist)) && !isUnlocked {
+            showDeleteGate = true
+            return
+        }
+        performDelete()
+    }
+
+    private func performDelete(cascade: Bool = false) {
+        guard case .edit(let blocklist) = mode else { return }
+        let store = BlocklistStore(context: context)
+        do {
+            try store.delete(blocklist, cascade: cascade)
+            dismiss()
+        } catch BlocklistStoreError.referencedBySchedules(let names) {
+            pendingCascadeDelete = names
+            showDeleteConfirm = true
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

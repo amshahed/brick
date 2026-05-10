@@ -39,6 +39,30 @@ final class LockdownManagerTests: XCTestCase {
 
         XCTAssertTrue(lockdown.isLocked(.disableSchedule(schedule), at: now))
         XCTAssertTrue(lockdown.isLocked(.deleteSchedule(schedule), at: now))
+        XCTAssertTrue(
+            lockdown.isLocked(.editScheduleFields(schedule), at: now),
+            "Editing the load-bearing fields of an active schedule must require the passcode."
+        )
+    }
+
+    func testEditScheduleFieldsUnlockedWhenInactive() throws {
+        // Off-hours schedule (1–2am, evaluated at noon the same day) — same
+        // shape as testScheduleNotLockedOutsideWindow but asserting on the
+        // editScheduleFields action specifically.
+        let comps = DateComponents(year: 2024, month: 1, day: 8, hour: 12)
+        let noon = Calendar.current.date(from: comps) ?? .now
+        let oneAM = Calendar.current.date(from: DateComponents(year: 2024, month: 1, day: 8, hour: 1)) ?? .now
+        let weekday = Calendar.current.component(.weekday, from: oneAM)
+        let schedule = Schedule(
+            name: "Night",
+            blocklist: blocklist,
+            weekdayMask: WeekdayMask.forAppleWeekday(weekday),
+            startMinute: 60,
+            endMinute: 120
+        )
+        context.insert(schedule)
+        try context.save()
+        XCTAssertFalse(lockdown.isLocked(.editScheduleFields(schedule), at: noon))
     }
 
     func testScheduleNotLockedWhenDisabled() throws {

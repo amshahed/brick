@@ -6,6 +6,7 @@ struct SchedulesListView: View {
     @Query(sort: \Schedule.createdDate, order: .forward) private var schedules: [Schedule]
     @Query private var blocklists: [Blocklist]
     @State private var showingNew = false
+    @State private var showingTemplatePicker = false
     @State private var pendingToggleOff: Schedule?
     @State private var pendingDelete: Schedule?
     @State private var showToggleGate = false
@@ -14,24 +15,29 @@ struct SchedulesListView: View {
     var body: some View {
         Group {
             if blocklists.isEmpty {
-                ContentUnavailableView(
-                    "Create a blocklist first",
-                    systemImage: "square.stack",
-                    description: Text("Schedules reference a blocklist. Make one in the Blocklists tab.")
+                BrickEmptyState(
+                    eyebrow: "Schedules",
+                    title: "Block on a\nrecurring rhythm.",
+                    body: "Pick a template to set up your first recurring block in one tap. You can edit it later — name, apps, and times are all yours.",
+                    primaryActionLabel: "Start from template",
+                    primaryAction: { showingTemplatePicker = true }
                 )
             } else if schedules.isEmpty {
-                ContentUnavailableView {
-                    Label("No schedules yet", systemImage: "calendar")
-                } description: {
-                    Text("Create a schedule to block apps automatically.")
-                } actions: {
-                    Button("New schedule") { showingNew = true }
-                        .buttonStyle(.borderedProminent)
-                }
+                BrickEmptyState(
+                    eyebrow: "Schedules",
+                    title: "No schedules yet.",
+                    body: "Create a schedule to block apps automatically on a recurring rhythm — or start from a template.",
+                    primaryActionLabel: "New schedule",
+                    primaryAction: { showingNew = true },
+                    secondaryActionLabel: "Start from template",
+                    secondaryAction: { showingTemplatePicker = true }
+                )
             } else {
                 List {
                     ForEach(schedules) { schedule in
-                        NavigationLink(value: schedule) {
+                        ZStack {
+                            NavigationLink(value: schedule) { EmptyView() }
+                                .opacity(0)
                             ScheduleRow(
                                 schedule: schedule,
                                 onRequestToggleOff: {
@@ -40,18 +46,31 @@ struct SchedulesListView: View {
                                 }
                             )
                         }
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 6, leading: Theme.Space.lg, bottom: 6, trailing: Theme.Space.lg))
                     }
                     .onDelete(perform: requestDelete)
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
+        .background(Theme.canvas.ignoresSafeArea())
         .navigationTitle("Schedules")
         .toolbar {
-            if !blocklists.isEmpty {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showingNew = true } label: {
-                        Label("New schedule", systemImage: "plus")
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    if !blocklists.isEmpty {
+                        Button { showingNew = true } label: {
+                            Label("New schedule", systemImage: "plus")
+                        }
                     }
+                    Button { showingTemplatePicker = true } label: {
+                        Label("Start from template", systemImage: "sparkles")
+                    }
+                } label: {
+                    Label("Add", systemImage: "plus")
                 }
             }
         }
@@ -62,6 +81,9 @@ struct SchedulesListView: View {
             NavigationStack {
                 ScheduleEditorView(mode: .create)
             }
+        }
+        .sheet(isPresented: $showingTemplatePicker) {
+            TemplatePickerSheet()
         }
         .passcodeGate(
             title: "Disable active schedule",
@@ -106,35 +128,53 @@ private struct ScheduleRow: View {
     var onRequestToggleOff: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(schedule.name).font(.headline)
-                Spacer()
-                Toggle("", isOn: Binding(
-                    get: { schedule.enabled },
-                    set: { newValue in
-                        if !newValue, LockdownManager(context: context).isLocked(.disableSchedule(schedule)) {
-                            onRequestToggleOff()
-                        } else {
-                            try? ScheduleStore(context: context).setEnabled(schedule, newValue)
-                        }
-                    }
-                ))
-                .labelsHidden()
+        HStack(alignment: .top, spacing: Theme.Space.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(schedule.enabled ? Theme.accentMuted : Color.primary.opacity(0.05))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "clock")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(schedule.enabled ? Theme.accent : .secondary)
             }
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(schedule.name)
+                    .font(Theme.display(17, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text(timeLine)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(metaLine)
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: Theme.Space.sm)
+
+            Toggle("", isOn: Binding(
+                get: { schedule.enabled },
+                set: { newValue in
+                    if !newValue, LockdownManager(context: context).isLocked(.disableSchedule(schedule)) {
+                        onRequestToggleOff()
+                    } else {
+                        try? ScheduleStore(context: context).setEnabled(schedule, newValue)
+                    }
+                }
+            ))
+            .labelsHidden()
+            .tint(Theme.accent)
         }
-        .padding(.vertical, 2)
+        .cardSurface(padding: Theme.Space.md)
+        .contentShape(Rectangle())
     }
 
-    private var subtitle: String {
-        let parts = [
-            schedule.blocklist?.name ?? "No blocklist",
-            schedule.weekdayMask.shortDescription,
-            schedule.timeRangeDescription,
-        ]
-        return parts.joined(separator: " · ")
+    private var timeLine: String {
+        "\(schedule.weekdayMask.shortDescription) · \(schedule.timeRangeDescription)"
+    }
+
+    private var metaLine: String {
+        schedule.blocklist?.name ?? "No blocklist"
     }
 }

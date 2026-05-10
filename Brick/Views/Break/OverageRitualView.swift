@@ -98,6 +98,8 @@ struct OverageRitualView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Theme.canvas.ignoresSafeArea())
         .navigationTitle("Override")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

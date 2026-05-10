@@ -5,7 +5,6 @@ struct BlocklistsListView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Blocklist.createdDate, order: .forward) private var blocklists: [Blocklist]
     @State private var showingNewEditor = false
-    @State private var showingTemplatePicker = false
     @State private var pendingDelete: PendingDelete?
     @State private var pendingActiveDelete: Blocklist?
     @State private var showDeleteGate = false
@@ -19,47 +18,37 @@ struct BlocklistsListView: View {
     var body: some View {
         Group {
             if blocklists.isEmpty {
-                ContentUnavailableView {
-                    Label("No blocklists yet", systemImage: "square.stack")
-                } description: {
-                    Text("Create a blocklist to group the apps you want to block.")
-                } actions: {
-                    VStack(spacing: 8) {
-                        Button("New blocklist") { showingNewEditor = true }
-                            .buttonStyle(.borderedProminent)
-                        Button("Start from template") { showingTemplatePicker = true }
-                            .buttonStyle(.bordered)
-                    }
-                }
+                BrickEmptyState(
+                    eyebrow: "Blocklists",
+                    title: "Group apps\nyou want to block.",
+                    body: "Build named bundles of apps and categories, then point a schedule or one-off block at one. Or start from a template in Schedules.",
+                    primaryActionLabel: "New blocklist",
+                    primaryAction: { showingNewEditor = true }
+                )
             } else {
                 List {
                     ForEach(blocklists) { blocklist in
-                        NavigationLink(value: blocklist) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(blocklist.name).font(.headline)
-                                Text(blocklist.selectionSummary)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 2)
+                        ZStack {
+                            NavigationLink(value: blocklist) { EmptyView() }
+                                .opacity(0)
+                            BlocklistRow(blocklist: blocklist)
                         }
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 6, leading: Theme.Space.lg, bottom: 6, trailing: Theme.Space.lg))
                     }
                     .onDelete(perform: delete)
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
+        .background(Theme.canvas.ignoresSafeArea())
         .navigationTitle("Blocklists")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button { showingNewEditor = true } label: {
-                        Label("New blocklist", systemImage: "plus")
-                    }
-                    Button { showingTemplatePicker = true } label: {
-                        Label("Start from template", systemImage: "sparkles")
-                    }
-                } label: {
-                    Label("Add", systemImage: "plus")
+                Button { showingNewEditor = true } label: {
+                    Label("New blocklist", systemImage: "plus")
                 }
             }
         }
@@ -70,9 +59,6 @@ struct BlocklistsListView: View {
             NavigationStack {
                 BlocklistEditorView(mode: .create)
             }
-        }
-        .sheet(isPresented: $showingTemplatePicker) {
-            TemplatePickerSheet()
         }
         .alert(item: $pendingDelete) { pending in
             Alert(

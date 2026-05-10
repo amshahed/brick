@@ -10,6 +10,7 @@ final class NotificationService {
     enum Identifier {
         static let blockStarted = "brick.block.started"
         static let blockEnded = "brick.block.ended"
+        static let breakRequested = "brick.break.requested"
         static func breakExpiring(_ id: UUID) -> String { "brick.break.expiring.\(id.uuidString)" }
         static func overage(_ id: UUID) -> String { "brick.overage.\(id.uuidString)" }
     }
@@ -52,6 +53,17 @@ final class NotificationService {
         content.body = Self.formatOverage(overage: overage, extensionApplied: extensionApplied)
         content.sound = .default
         post(id: Identifier.overage(breakID), content: content, trigger: nil)
+    }
+
+    /// Posted from the shield extension when the user taps "Take a break"
+    /// from inside a blocked app. iOS dismisses the shield but cannot deep
+    /// link into Brick — so without this nudge the tap appears to do nothing.
+    func breakRequested() {
+        let content = UNMutableNotificationContent()
+        content.title = "Open Brick to take your break"
+        content.body = "Tap to choose how long, then we'll let the app through for that window."
+        content.sound = .default
+        post(id: Identifier.breakRequested, content: content, trigger: nil)
     }
 
     // MARK: - Time-delayed

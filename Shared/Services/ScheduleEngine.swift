@@ -10,11 +10,11 @@ import SwiftData
 /// (on every interval event).
 struct ScheduleEngine {
     let context: ModelContext
-    let shield: ShieldManager
+    let shield: any ShieldApplying
     let center: DeviceActivityCenter
 
     init(context: ModelContext,
-         shield: ShieldManager = ShieldManager(),
+         shield: any ShieldApplying = ShieldManager(),
          center: DeviceActivityCenter = DeviceActivityCenter()) {
         self.context = context
         self.shield = shield
@@ -71,10 +71,8 @@ struct ScheduleEngine {
 
         if union.isEmpty {
             shield.clear()
-            Task.detached { await FocusManager.deactivate() }
         } else {
             shield.apply(union: union)
-            Task.detached { await FocusManager.activate() }
         }
         return ActiveSources(schedules: activeSchedules, oneShots: activeOneShots)
     }

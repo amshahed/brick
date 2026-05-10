@@ -22,7 +22,18 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
 
     private func reconcile() {
         do {
-            let schema = Schema([Blocklist.self, Schedule.self, OneShotBlock.self, BlockSession.self, BreakRecord.self])
+            // Schema MUST match the main app's container exactly. Mismatched
+            // schemas opening the same SQLite file have produced "store
+            // couldn't be opened" errors in onboarding saves on real devices.
+            let schema = Schema([
+                Blocklist.self,
+                Schedule.self,
+                OneShotBlock.self,
+                BlockSession.self,
+                BreakRecord.self,
+                AppSettings.self,
+                TravelPeriod.self,
+            ])
             let config = ModelConfiguration(
                 schema: schema,
                 url: SharedContainer.storeURL,

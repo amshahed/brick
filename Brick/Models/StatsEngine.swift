@@ -47,10 +47,11 @@ struct StatsEngine {
 
     // MARK: - Streak
 
-    /// Consecutive days (ending today or yesterday) with no overage breaks.
-    /// Days with zero break records count as on-quota — they neither extend
-    /// nor reset the streak. The walk stops at the first day with any record
-    /// having `wasOverage == true`.
+    /// Consecutive on-quota days (ending today or yesterday). Each day with
+    /// at least one non-overage record adds 1. Empty days within recorded
+    /// history are gaps — they don't reset the streak but don't extend it
+    /// either. The walk stops on the first overage day, or when the cursor
+    /// passes the earliest recorded day.
     func onQuotaStreak(now: Date = .now) -> Int {
         let cal = Calendar.current
         let records = (try? context.fetch(FetchDescriptor<BreakRecord>())) ?? []
@@ -61,28 +62,29 @@ struct StatsEngine {
                 .filter { $0.wasOverage }
                 .map { cal.startOfDay(for: $0.startTime) }
         )
-        let anyRecordDays: Set<Date> = Set(
+        let recordDays: Set<Date> = Set(
             records.map { cal.startOfDay(for: $0.startTime) }
         )
+        guard let earliestRecordDay = recordDays.min() else { return 0 }
 
         var streak = 0
         var cursor = cal.startOfDay(for: now)
         // If today has no records yet, start the walk from yesterday so we
         // don't artificially inflate the streak with an empty in-progress day.
-        if !anyRecordDays.contains(cursor) {
+        if !recordDays.contains(cursor) {
             guard let y = cal.date(byAdding: .day, value: -1, to: cursor) else {
                 return 0
             }
             cursor = y
         }
 
-        while !overageDays.contains(cursor) {
-            streak += 1
+        while cursor >= earliestRecordDay {
+            if overageDays.contains(cursor) { break }
+            if recordDays.contains(cursor) { streak += 1 }
             guard let prev = cal.date(byAdding: .day, value: -1, to: cursor) else {
                 break
             }
             cursor = prev
-            if streak > 365 { break }
         }
         return streak
     }

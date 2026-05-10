@@ -22,12 +22,26 @@ struct ScheduleEditorView: View {
     @State private var startDate: Date = .now
     @State private var endDate: Date = .now.addingTimeInterval(7 * 24 * 3600)
     @State private var errorMessage: String?
+    @State private var isFieldsLocked = false
+    @State private var isUnlocked = false
+    @State private var showUnlockGate = false
 
     var body: some View {
         Form {
             Section("Name") {
                 TextField("e.g. Deep Work", text: $name)
                     .textInputAutocapitalization(.words)
+            }
+
+            if isFieldsBlockedByGate {
+                Section {
+                    Text("This schedule is currently active. Time, weekday, and blocklist edits are locked. Tap Unlock to enter your passcode, or rename it (always allowed).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Button("Unlock to edit") { showUnlockGate = true }
+                        .buttonStyle(.brickSecondary)
+                        .padding(.vertical, 4)
+                }
             }
 
             Section("Blocklist") {
@@ -37,6 +51,7 @@ struct ScheduleEditorView: View {
                         Text(b.name).tag(Optional(b))
                     }
                 }
+                .disabled(isFieldsBlockedByGate)
             }
 
             Section("Weekdays") {
@@ -47,12 +62,15 @@ struct ScheduleEditorView: View {
                             if on { weekdayMask.insert(day.mask) } else { weekdayMask.remove(day.mask) }
                         }
                     ))
+                    .disabled(isFieldsBlockedByGate)
                 }
             }
 
             Section("Time") {
                 DatePicker("Start", selection: $startTime, displayedComponents: .hourAndMinute)
+                    .disabled(isFieldsBlockedByGate)
                 DatePicker("End", selection: $endTime, displayedComponents: .hourAndMinute)
+                    .disabled(isFieldsBlockedByGate)
                 if startMinutes >= endMinutes {
                     Text("Wraps past midnight")
                         .font(.footnote)
@@ -62,9 +80,12 @@ struct ScheduleEditorView: View {
 
             Section {
                 Toggle("Limit to a date range", isOn: $useDateRange)
+                    .disabled(isFieldsBlockedByGate)
                 if useDateRange {
                     DatePicker("From", selection: $startDate, displayedComponents: .date)
+                        .disabled(isFieldsBlockedByGate)
                     DatePicker("Until", selection: $endDate, in: startDate..., displayedComponents: .date)
+                        .disabled(isFieldsBlockedByGate)
                 }
             }
 
@@ -74,6 +95,8 @@ struct ScheduleEditorView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Theme.canvas.ignoresSafeArea())
         .navigationTitle(mode.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -86,6 +109,20 @@ struct ScheduleEditorView: View {
             }
         }
         .onAppear(perform: load)
+        .passcodeGate(
+            title: "Edit active schedule",
+            reason: "This schedule is currently running. Enter your passcode to change its time, weekdays, dates, or blocklist.",
+            isPresented: $showUnlockGate
+        ) {
+            isUnlocked = true
+        }
+    }
+
+    /// True when this is an edit of a currently-active schedule and the
+    /// user hasn't unlocked. Renaming stays allowed; everything else gets
+    /// disabled with a banner explaining why.
+    private var isFieldsBlockedByGate: Bool {
+        isFieldsLocked && !isUnlocked
     }
 
     private var canSave: Bool {
@@ -117,6 +154,8 @@ struct ScheduleEditorView: View {
             startDate = s
             endDate = e
         }
+        isFieldsLocked = LockdownManager(context: context)
+            .isLocked(.editScheduleFields(schedule))
     }
 
     private func save() {

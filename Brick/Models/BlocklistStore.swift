@@ -45,6 +45,11 @@ struct BlocklistStore {
     func updateSelection(_ blocklist: Blocklist, to selection: FamilyActivitySelection) throws {
         blocklist.selection = selection
         try context.save()
+        // Re-apply the shield right away. Otherwise the active block's
+        // ManagedSettings store keeps the union it was given at interval
+        // start (often empty if the user hadn't picked apps yet) until the
+        // next DeviceActivity boundary fires, which can be hours.
+        try? ScheduleEngine(context: context).applyCurrentUnion()
     }
 
     func delete(_ blocklist: Blocklist, cascade: Bool = false) throws {

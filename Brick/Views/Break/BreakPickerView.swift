@@ -13,11 +13,13 @@ struct BreakPickerView: View {
     @Query private var oneShots: [OneShotBlock]
 
     let preselectedTokenData: Data?
-    let onStart: (ApplicationToken, TimeInterval) -> Void
+    let onStartApp: (ApplicationToken, TimeInterval) -> Void
+    let onStartCategory: (ActivityCategoryToken, TimeInterval) -> Void
     let onOverride: () -> Void
     let onCancel: () -> Void
 
-    @State private var selectedTokenData: Data?
+    @State private var selectedAppToken: Data?
+    @State private var selectedCategoryToken: Data?
     @State private var durationMinutes: Int = 2
     @State private var availability: BreakAvailability = .noActiveBlock
     @State private var now: Date = .now
@@ -29,22 +31,45 @@ struct BreakPickerView: View {
         List {
             Section { availabilityBanner }
 
-            if case .allowed = availability, !blockedTokens.isEmpty {
-                Section("Pick one app") {
-                    ForEach(blockedTokens, id: \.self) { tokenData in
-                        Button {
-                            selectedTokenData = tokenData
-                        } label: {
-                            HStack {
-                                tokenLabel(for: tokenData)
-                                Spacer()
-                                if selectedTokenData == tokenData {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(.tint)
+            if case .allowed = availability, hasAnyTarget {
+                if !blockedTokens.isEmpty {
+                    Section("Pick one app") {
+                        ForEach(blockedTokens, id: \.self) { tokenData in
+                            Button {
+                                selectedAppToken = tokenData
+                                selectedCategoryToken = nil
+                            } label: {
+                                HStack {
+                                    appLabel(for: tokenData)
+                                    Spacer()
+                                    if selectedAppToken == tokenData {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.tint)
+                                    }
                                 }
                             }
+                            .foregroundStyle(.primary)
                         }
-                        .foregroundStyle(.primary)
+                    }
+                }
+                if !blockedCategoryTokens.isEmpty {
+                    Section(blockedTokens.isEmpty ? "Pick a category" : "Or a whole category") {
+                        ForEach(blockedCategoryTokens, id: \.self) { tokenData in
+                            Button {
+                                selectedCategoryToken = tokenData
+                                selectedAppToken = nil
+                            } label: {
+                                HStack {
+                                    categoryLabel(for: tokenData)
+                                    Spacer()
+                                    if selectedCategoryToken == tokenData {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.tint)
+                                    }
+                                }
+                            }
+                            .foregroundStyle(.primary)
+                        }
                     }
                 }
                 Section("Duration") {
@@ -55,16 +80,18 @@ struct BreakPickerView: View {
                     }
                     .pickerStyle(.segmented)
                 }
-            } else if case .allowed = availability, blockedTokens.isEmpty {
+            } else if case .allowed = availability {
                 Section {
                     ContentUnavailableView(
-                        "No app-level blocks",
+                        "Nothing to break from",
                         systemImage: "square.stack.3d.up.slash",
-                        description: Text("Per-app breaks only work for apps added individually to a blocklist, not category-only picks.")
+                        description: Text("Your active blocklist has no apps or categories that can be unshielded.")
                     )
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Theme.canvas.ignoresSafeArea())
         .navigationTitle("Take a break")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -79,7 +106,7 @@ struct BreakPickerView: View {
         .onAppear {
             refresh()
             if let preselectedTokenData, blockedTokens.contains(preselectedTokenData) {
-                selectedTokenData = preselectedTokenData
+                selectedAppToken = preselectedTokenData
             }
         }
         .onReceive(ticker) { instant in
@@ -113,6 +140,16 @@ struct BreakPickerView: View {
         }
     }
 
+    private var blockedCategoryTokens: [Data] {
+        activeUnion.categoryTokens.compactMap {
+            try? PropertyListEncoder().encode($0)
+        }
+    }
+
+    private var hasAnyTarget: Bool {
+        !blockedTokens.isEmpty || !blockedCategoryTokens.isEmpty
+    }
+
     private var remainingMinutes: Int {
         if case .allowed(let r) = availability {
             return max(1, Int(r / 60))
@@ -125,10 +162,8 @@ struct BreakPickerView: View {
     }
 
     private var canStart: Bool {
-        guard case .allowed = availability,
-              selectedTokenData != nil,
-              durationMinutes > 0 else { return false }
-        return true
+        guard case .allowed = availability, durationMinutes > 0 else { return false }
+        return selectedAppToken != nil || selectedCategoryToken != nil
     }
 
     // MARK: - Actions
@@ -141,10 +176,18 @@ struct BreakPickerView: View {
     }
 
     private func startIfPossible() {
-        guard let tokenData = selectedTokenData,
-              let token = try? PropertyListDecoder()
-                .decode(ApplicationToken.self, from: tokenData) else { return }
-        onStart(token, TimeInterval(durationMinutes * 60))
+        let duration = TimeInterval(durationMinutes * 60)
+        if let tokenData = selectedAppToken,
+           let token = try? PropertyListDecoder()
+            .decode(ApplicationToken.self, from: tokenData) {
+            onStartApp(token, duration)
+            return
+        }
+        if let tokenData = selectedCategoryToken,
+           let token = try? PropertyListDecoder()
+            .decode(ActivityCategoryToken.self, from: tokenData) {
+            onStartCategory(token, duration)
+        }
     }
 
     // MARK: - Subviews
@@ -202,13 +245,24 @@ struct BreakPickerView: View {
     }
 
     @ViewBuilder
-    private func tokenLabel(for data: Data) -> some View {
+    private func appLabel(for data: Data) -> some View {
         if let token = try? PropertyListDecoder()
             .decode(ApplicationToken.self, from: data) {
             Label(token)
                 .lineLimit(1)
         } else {
             Text("Unknown app")
+        }
+    }
+
+    @ViewBuilder
+    private func categoryLabel(for data: Data) -> some View {
+        if let token = try? PropertyListDecoder()
+            .decode(ActivityCategoryToken.self, from: data) {
+            Label(token)
+                .lineLimit(1)
+        } else {
+            Text("Unknown category")
         }
     }
 

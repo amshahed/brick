@@ -168,8 +168,10 @@ final class StatsEngineTests: XCTestCase {
         ))
         try context.save()
 
-        // Empty days neither break nor freeze the walk — streak continues.
+        // Empty days don't reset the walk — the engine still finds the
+        // recorded day 3 days back and counts it (streak = 1). The walk
+        // doesn't keep going forever past the earliest recorded day.
         let streak = engine.onQuotaStreak(now: today.addingTimeInterval(3600))
-        XCTAssertGreaterThanOrEqual(streak, 4)
+        XCTAssertEqual(streak, 1)
     }
 }

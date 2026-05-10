@@ -58,7 +58,13 @@ struct SettingsTab: View {
                     Label("Notifications", systemImage: "bell.fill")
                         .foregroundStyle(.secondary)
                 }
+
+                #if DEBUG
+                debugSection
+                #endif
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.canvas.ignoresSafeArea())
             .navigationTitle("Settings")
             .task { load() }
             .onReceive(tick) { now = $0 }
@@ -70,7 +76,9 @@ struct SettingsTab: View {
                 showSetup = true
             }
             .sheet(isPresented: $showSetup, onDismiss: load) {
-                PasscodeSetupView(purpose: .change)
+                PasscodeSetupView(purpose: .change) {
+                    showSetup = false
+                }
             }
         }
     }
@@ -101,4 +109,26 @@ struct SettingsTab: View {
     private func load() {
         settings = try? AppSettingsStore(context: context).loadOrCreate()
     }
+
+    #if DEBUG
+    @ViewBuilder
+    private var debugSection: some View {
+        Section("Debug") {
+            Toggle(isOn: Binding(
+                get: { UserDefaults.standard.bool(forKey: BreakQuotaEngine.debugFastTimingsKey) },
+                set: { newValue in
+                    UserDefaults.standard.set(newValue, forKey: BreakQuotaEngine.debugFastTimingsKey)
+                    BreakQuotaEngine.applyDebugTimings(newValue)
+                }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Fast break timings")
+                    Text("Cold start 2m · window 3m · cap 2m · overage cap 3m. The Test (now) template scales to a 10-minute schedule. Off restores PRD values (25/60/10/15).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+    #endif
 }

@@ -26,12 +26,25 @@ final class TemplateApplierTests: XCTestCase {
         XCTAssertNil(result.schedule.endDate)
     }
 
-    func testApplyTwiceGetsSuffixedName() throws {
+    func testApplyTwiceReusesExisting() throws {
         let t = try XCTUnwrap(TemplateLibrary.template(id: "deep-work"))
         let first = try applier.apply(t)
         let second = try applier.apply(t)
         XCTAssertEqual(first.blocklist.name, "Deep Work")
-        XCTAssertEqual(second.blocklist.name, "Deep Work 2")
+        XCTAssertEqual(second.blocklist.name, "Deep Work")
+        XCTAssertEqual(
+            first.blocklist.persistentModelID,
+            second.blocklist.persistentModelID,
+            "Re-applying a template must reuse the existing blocklist, not create a duplicate."
+        )
+        XCTAssertEqual(
+            first.schedule.persistentModelID,
+            second.schedule.persistentModelID,
+            "Re-applying a template must reuse the existing schedule."
+        )
+
+        let allBlocklists = try BlocklistStore(context: context).all()
+        XCTAssertEqual(allBlocklists.count, 1)
     }
 
     func testDateBoundedTemplatePreservesDates() throws {

@@ -7,35 +7,29 @@ struct StatsCard: View {
     let streak: Int
 
     var body: some View {
-        LazyVGrid(
-            columns: [GridItem(.flexible()), GridItem(.flexible())],
-            spacing: 12
-        ) {
-            tile(label: "Today", value: formatDuration(today))
-            tile(label: "This week", value: formatDuration(week))
-            tile(label: "Break quota", value: formatQuota(quotaUsed))
-            tile(label: "Streak", value: formatStreak(streak))
-        }
-    }
+        VStack(alignment: .leading, spacing: Theme.Space.lg) {
+            SectionEyebrow(text: "Your week")
 
-    @ViewBuilder
-    private func tile(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title3.bold())
-                .monospacedDigit()
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
+            // Two-column grid of large monospaced stats. The hairline
+            // dividers between cells keep the rhythm without adding the
+            // weight of full card-on-card chrome.
+            HStack(alignment: .top, spacing: 0) {
+                StatBlock(value: formatDuration(today), label: "Today", numberSize: 30)
+                Divider().frame(height: 56).overlay(Theme.hairline)
+                StatBlock(value: formatDuration(week), label: "This week", numberSize: 30)
+            }
+            .frame(maxWidth: .infinity)
+
+            Divider().overlay(Theme.hairline)
+
+            HStack(alignment: .top, spacing: 0) {
+                StatBlock(value: formatQuota(quotaUsed), label: "Break quota", numberSize: 22)
+                Divider().frame(height: 44).overlay(Theme.hairline)
+                StatBlock(value: formatStreak(streak), label: "Streak", numberSize: 22)
+            }
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-        )
+        .cardSurface()
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {
@@ -49,10 +43,10 @@ struct StatsCard: View {
     private func formatQuota(_ used: TimeInterval) -> String {
         let mins = Int((used / 60).rounded())
         let cap = Int(BreakQuotaEngine.quotaCap / 60)
-        return "\(mins)m / \(cap)m"
+        return "\(mins) / \(cap)m"
     }
 
     private func formatStreak(_ days: Int) -> String {
-        "\(days) day\(days == 1 ? "" : "s")"
+        days == 1 ? "1 day" : "\(days) days"
     }
 }

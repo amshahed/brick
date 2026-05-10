@@ -17,37 +17,54 @@ struct PasscodeGateView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                VStack(spacing: 8) {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 44))
-                        .foregroundStyle(.tint)
-                    Text(reason)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+            VStack(alignment: .leading, spacing: Theme.Space.xl) {
+                VStack(alignment: .leading, spacing: Theme.Space.md) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Theme.accentMuted)
+                            .frame(width: 56, height: 56)
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                    }
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        SectionEyebrow(text: "Locked")
+                        Text(title)
+                            .font(Theme.display(28, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        Text(reason)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, Theme.Space.xs)
+                    }
                 }
-                .padding(.top, 24)
 
                 SecureField("Passcode", text: $code)
                     .textContentType(.password)
                     .keyboardType(.numberPad)
-                    .font(.title2.monospacedDigit())
+                    .font(Theme.statNumber(28, weight: .semibold))
                     .multilineTextAlignment(.center)
-                    .padding()
-                    .background(Color.secondary.opacity(0.1), in: .rect(cornerRadius: 12))
-                    .padding(.horizontal)
+                    .padding(.vertical, Theme.Space.lg)
+                    .padding(.horizontal, Theme.Space.xl)
+                    .background(
+                        RoundedRectangle(cornerRadius: Theme.Radius.button, style: .continuous)
+                            .fill(Color.primary.opacity(0.05))
+                    )
                     .disabled(isLockedOut)
-                    .onChange(of: code) { _, new in
-                        code = String(new.filter { $0.isNumber }.prefix(6))
-                        errorText = nil
+                    .accessibilityIdentifier("passcode.gate.field")
+                    .onChange(of: code) { old, new in
+                        let sanitized = String(new.filter { $0.isNumber }.prefix(6))
+                        if sanitized != new { code = sanitized }
+                        if sanitized.count > old.count {
+                            errorText = nil
+                        }
                     }
 
                 if let errorText {
                     Text(errorText)
                         .font(.footnote)
                         .foregroundStyle(.red)
+                        .accessibilityIdentifier("passcode.gate.error")
                 }
 
                 if isLockedOut {
@@ -56,13 +73,17 @@ struct PasscodeGateView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Button("Unlock", action: submit)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(code.count < 4 || isLockedOut)
-
                 Spacer()
+
+                Button("Unlock", action: submit)
+                    .buttonStyle(.brickPrimary)
+                    .opacity(code.count < 4 || isLockedOut ? 0.4 : 1)
+                    .disabled(code.count < 4 || isLockedOut)
+                    .accessibilityIdentifier("passcode.gate.unlock")
             }
+            .padding(Theme.Space.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.canvas.ignoresSafeArea())
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

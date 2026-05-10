@@ -30,11 +30,18 @@ struct BreakSheet: View {
                 } else {
                     BreakPickerView(
                         preselectedTokenData: preselectedTokenData,
-                        onStart: { token, duration in
+                        onStartApp: { token, duration in
                             do {
                                 try controller.start(app: token, duration: duration)
                             } catch {
-                                print("[Brick] start break failed: \(error)")
+                                print("[Brick] start app break failed: \(error)")
+                            }
+                        },
+                        onStartCategory: { token, duration in
+                            do {
+                                try controller.start(category: token, duration: duration)
+                            } catch {
+                                print("[Brick] start category break failed: \(error)")
                             }
                         },
                         onOverride: { openOverage() },
