@@ -104,14 +104,20 @@ struct BrickApp: App {
                 .environmentObject(intentInbox)
                 .onAppear {
                     intentInbox.checkForIntent()
-                    breakController.refreshFromStore()
+                    // Order matters: `resyncShield()` applies the *full*
+                    // union (no break-aware exclusions). `refreshFromStore`
+                    // then layers the active break's override on top. If
+                    // run in the opposite order, the resync wipes the
+                    // override and the user's break appears to end on
+                    // every app foreground. (#16)
                     resyncShield()
+                    breakController.refreshFromStore()
                 }
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         intentInbox.checkForIntent()
-                        breakController.refreshFromStore()
                         resyncShield()
+                        breakController.refreshFromStore()
                     }
                 }
                 .onOpenURL { url in
