@@ -129,24 +129,46 @@ struct SchedulesListView: View {
     }
 }
 
+/// Row uses plain props captured at construction time instead of an
+/// `@Bindable` reference to the SwiftData model. Reason: when the parent
+/// deletes a schedule via swipe, SwiftUI keeps the deleted row in the
+/// view tree for the slide-out animation. An `@Bindable` Toggle binding
+/// would fire one more `.get` on the invalidated model during that frame
+/// and trap with `SwiftData/BackingData.swift:1039: Fatal error: This
+/// model instance was invalidated...`. (#23) Plain props make the row
+/// stateless and safe to render even after the underlying row is gone.
 private struct ScheduleRow: View {
     @Environment(\.modelContext) private var context
-    @Bindable var schedule: Schedule
-    var onRequestToggleOff: () -> Void
+
+    let schedule: Schedule
+    let name: String
+    let enabled: Bool
+    let timeLine: String
+    let metaLine: String
+    let onRequestToggleOff: () -> Void
+
+    init(schedule: Schedule, onRequestToggleOff: @escaping () -> Void) {
+        self.schedule = schedule
+        self.name = schedule.name
+        self.enabled = schedule.enabled
+        self.timeLine = "\(schedule.weekdayMask.shortDescription) · \(schedule.timeRangeDescription)"
+        self.metaLine = schedule.blocklist?.name ?? "No blocklist"
+        self.onRequestToggleOff = onRequestToggleOff
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: Theme.Space.md) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(schedule.enabled ? Theme.accentMuted : Color.primary.opacity(0.05))
+                    .fill(enabled ? Theme.accentMuted : Color.primary.opacity(0.05))
                     .frame(width: 40, height: 40)
                 Image(systemName: "clock")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(schedule.enabled ? Theme.accent : .secondary)
+                    .foregroundStyle(enabled ? Theme.accent : .secondary)
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(schedule.name)
+                Text(name)
                     .font(Theme.display(17, weight: .semibold))
                     .foregroundStyle(.primary)
                 Text(timeLine)
@@ -161,12 +183,19 @@ private struct ScheduleRow: View {
             Spacer(minLength: Theme.Space.sm)
 
             Toggle("", isOn: Binding(
-                get: { schedule.enabled },
+                get: { enabled },
                 set: { newValue in
-                    if !newValue, LockdownManager(context: context).isLocked(.disableSchedule(schedule)) {
+                    // Toggle action re-resolves the schedule each tap via
+                    // its id, so we never touch a stale snapshot.
+                    let id = schedule.persistentModelID
+                    let store = ScheduleStore(context: context)
+                    guard let fresh = try? context.fetch(
+                        FetchDescriptor<Schedule>(predicate: #Predicate { $0.persistentModelID == id })
+                    ).first else { return }
+                    if !newValue, LockdownManager(context: context).isLocked(.disableSchedule(fresh)) {
                         onRequestToggleOff()
                     } else {
-                        try? ScheduleStore(context: context).setEnabled(schedule, newValue)
+                        try? store.setEnabled(fresh, newValue)
                     }
                 }
             ))
@@ -175,13 +204,5 @@ private struct ScheduleRow: View {
         }
         .cardSurface(padding: Theme.Space.md)
         .contentShape(Rectangle())
-    }
-
-    private var timeLine: String {
-        "\(schedule.weekdayMask.shortDescription) · \(schedule.timeRangeDescription)"
-    }
-
-    private var metaLine: String {
-        schedule.blocklist?.name ?? "No blocklist"
     }
 }
