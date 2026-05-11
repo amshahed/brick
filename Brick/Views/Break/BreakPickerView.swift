@@ -233,7 +233,9 @@ struct BreakPickerView: View {
     /// per access, which made the picker rows reshuffle on every tick.
     /// Encode them all and sort by their byte representation so the order
     /// is the same across every render. (#17)
-    private static func stableEncodedOrder<T: Encodable>(_ tokens: Set<T>) -> [Data] {
+    /// Internal (not private) so unit tests can pin down the stability
+    /// invariant.
+    static func stableEncodedOrder<T: Encodable>(_ tokens: Set<T>) -> [Data] {
         tokens
             .compactMap { try? PropertyListEncoder().encode($0) }
             .sorted { $0.lexicographicallyPrecedes($1) }
