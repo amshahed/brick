@@ -36,8 +36,14 @@ struct BlocklistsListView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 6, leading: Theme.Space.lg, bottom: 6, trailing: Theme.Space.lg))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                attemptDelete(blocklist)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                     }
-                    .onDelete(perform: delete)
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -82,16 +88,13 @@ struct BlocklistsListView: View {
         }
     }
 
-    private func delete(at offsets: IndexSet) {
+    private func attemptDelete(_ blocklist: Blocklist) {
         let lockdown = LockdownManager(context: context)
-        for index in offsets {
-            let blocklist = blocklists[index]
-            if lockdown.isLocked(.deleteBlocklist(blocklist)) {
-                pendingActiveDelete = blocklist
-                showDeleteGate = true
-            } else {
-                performDelete(blocklist)
-            }
+        if lockdown.isLocked(.deleteBlocklist(blocklist)) {
+            pendingActiveDelete = blocklist
+            showDeleteGate = true
+        } else {
+            performDelete(blocklist)
         }
     }
 

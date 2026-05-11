@@ -49,8 +49,18 @@ struct SchedulesListView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 6, leading: Theme.Space.lg, bottom: 6, trailing: Theme.Space.lg))
+                        // Explicit swipeActions instead of `.onDelete` —
+                        // the embedded NavigationLink in the row's ZStack
+                        // confused iOS's implicit delete handler, leading
+                        // to apparent hangs. (#22)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                requestDelete(schedule: schedule)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                     }
-                    .onDelete(perform: requestDelete)
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
@@ -107,17 +117,14 @@ struct SchedulesListView: View {
         }
     }
 
-    private func requestDelete(at offsets: IndexSet) {
+    private func requestDelete(schedule: Schedule) {
         let store = ScheduleStore(context: context)
         let lockdown = LockdownManager(context: context)
-        for idx in offsets {
-            let schedule = schedules[idx]
-            if lockdown.isLocked(.deleteSchedule(schedule)) {
-                pendingDelete = schedule
-                showDeleteGate = true
-            } else {
-                try? store.delete(schedule)
-            }
+        if lockdown.isLocked(.deleteSchedule(schedule)) {
+            pendingDelete = schedule
+            showDeleteGate = true
+        } else {
+            try? store.delete(schedule)
         }
     }
 }

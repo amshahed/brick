@@ -183,6 +183,14 @@ struct ScheduleEngine {
 
     /// Drop expired schedules + one-shots, then register DeviceActivity
     /// intervals for everything still live.
+    ///
+    /// FamilyControls calls (`center.startMonitoring`, `stopMonitoring`)
+    /// can block the main thread when auth isn't granted (simulator /
+    /// `.notDetermined`). The persistence-side reconcile runs first and
+    /// unconditionally so deletes and template-applies are visible in the
+    /// UI immediately; only the DA registration is gated on auth, and each
+    /// register call is independently try-caught so one bad schedule
+    /// doesn't abort the rest. (#22)
     func sync() throws {
         let schedules = try context.fetch(FetchDescriptor<Schedule>())
         for schedule in schedules where schedule.isExpired && schedule.enabled {
@@ -199,21 +207,39 @@ struct ScheduleEngine {
         }
         try context.save()
 
+        // Skip the DeviceActivity registration entirely if FamilyControls
+        // hasn't been authorized. The persistence side already settled
+        // above; the user can re-grant auth later and a future sync will
+        // re-register everything.
+        guard AuthorizationCenter.shared.authorizationStatus == .approved else {
+            return
+        }
+
         center.stopMonitoring()
 
         for schedule in schedules where schedule.enabled && !schedule.isExpired {
-            try register(schedule)
+            do { try register(schedule) } catch {
+                print("[Brick] sync: register schedule \(schedule.name) failed: \(error)")
+            }
         }
         for oneShot in oneShots where oneShot.expiresAt > now {
-            try register(oneShot)
+            do { try register(oneShot) } catch {
+                print("[Brick] sync: register one-shot failed: \(error)")
+            }
         }
     }
 
-    /// Start a new one-shot: insert, register, and recompute.
+    /// Start a new one-shot: insert, register, and recompute. DA register
+    /// is best-effort — the one-shot still persists and counts toward the
+    /// active union even if registration fails.
     func start(oneShot: OneShotBlock) throws {
         context.insert(oneShot)
         try context.save()
-        try register(oneShot)
+        if AuthorizationCenter.shared.authorizationStatus == .approved {
+            do { try register(oneShot) } catch {
+                print("[Brick] start oneShot: register failed: \(error)")
+            }
+        }
         let active = try applyCurrentUnion()
         try reconcileBlockSessions(active: active)
     }
