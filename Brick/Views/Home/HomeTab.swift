@@ -201,7 +201,10 @@ struct HomeTab: View {
     }
 
     private var breakButtonLabel: String {
-        if controller.active != nil { return "Resume break" }
+        // Brick has no pause/resume model — the button just re-opens the
+        // active-break sheet. "View break" reflects that without the
+        // misleading "Resume" word. (#19)
+        if controller.active != nil { return "View break" }
         return "Take a break"
     }
 
