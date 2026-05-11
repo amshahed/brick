@@ -19,6 +19,13 @@ struct BrickApp: App {
             UserDefaults.standard.bool(forKey: BreakQuotaEngine.debugFastTimingsKey)
         )
 
+        // Defensive cleanup for orphaned rows left over from prior crashes.
+        // SwiftData traps when anyone touches `Schedule.blocklist` on an
+        // orphan (Schedule whose Blocklist was deleted but Schedule wasn't
+        // committed-deleted alongside). Same for one-shots, sessions,
+        // break records. Idempotent. (#24)
+        Self.cleanUpOrphanedRows(context: Self.sharedModelContainer.mainContext)
+
         Task {
             do {
                 try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
@@ -63,6 +70,42 @@ struct BrickApp: App {
                 true,
                 forKey: AppSettingsStore.onboardingCompletedDefaultsKey
             )
+        }
+    }
+
+    /// Delete rows whose load-bearing relationships are nil — leftover
+    /// state from a prior crash mid-cascade-delete. Without this, the
+    /// next access to `schedule.blocklist?` traps with SwiftData's
+    /// "model instance was invalidated" fatal error. (#24)
+    private static func cleanUpOrphanedRows(context: ModelContext) {
+        do {
+            // Schedules whose blocklist relationship is nil.
+            let schedules = try context.fetch(FetchDescriptor<Schedule>())
+            var removed = 0
+            for schedule in schedules where schedule.blocklist == nil {
+                context.delete(schedule)
+                removed += 1
+            }
+            // One-shots whose blocklist is gone.
+            let oneShots = try context.fetch(FetchDescriptor<OneShotBlock>())
+            for oneShot in oneShots where oneShot.blocklist == nil {
+                context.delete(oneShot)
+                removed += 1
+            }
+            // Open BlockSessions whose source (schedule or one-shot) is gone.
+            let openSessions = try context.fetch(
+                FetchDescriptor<BlockSession>(predicate: #Predicate { $0.actualEnd == nil })
+            )
+            for session in openSessions where session.schedule == nil && session.oneShotBlock == nil {
+                session.actualEnd = .now
+                removed += 1
+            }
+            if removed > 0 {
+                try context.save()
+                print("[Brick] cleaned up \(removed) orphaned row(s) from prior crash state")
+            }
+        } catch {
+            print("[Brick] orphan cleanup failed: \(error)")
         }
     }
 
