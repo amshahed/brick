@@ -25,72 +25,81 @@ struct BreakPickerView: View {
     @State private var now: Date = .now
     private let ticker = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
-    private static let presetMinutes: [Int] = [1, 2, 3, 5]
+    // Duration is now a stepper instead of presets (#18) — kept this slot
+    // as a comment so future contributors don't reintroduce the segmented
+    // picker without thinking through scaling.
 
     var body: some View {
-        List {
-            Section { availabilityBanner }
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Space.xl) {
+                VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                    SectionEyebrow(text: "Break")
+                    Text("Take a short\nbreak.")
+                        .font(Theme.display(30, weight: .semibold))
+                        .lineSpacing(-2)
+                }
 
-            if case .allowed = availability, hasAnyTarget {
-                if !blockedTokens.isEmpty {
-                    Section("Pick one app") {
-                        ForEach(blockedTokens, id: \.self) { tokenData in
-                            Button {
-                                selectedAppToken = tokenData
-                                selectedCategoryToken = nil
-                            } label: {
-                                HStack {
-                                    appLabel(for: tokenData)
-                                    Spacer()
-                                    if selectedAppToken == tokenData {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(.tint)
+                availabilityBanner
+
+                if case .allowed = availability, hasAnyTarget {
+                    if !blockedTokens.isEmpty {
+                        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                            SectionEyebrow(text: "Pick one app")
+                            VStack(spacing: Theme.Space.sm) {
+                                ForEach(blockedTokens, id: \.self) { tokenData in
+                                    targetRow(
+                                        isSelected: selectedAppToken == tokenData,
+                                        icon: "app.fill"
+                                    ) {
+                                        appLabel(for: tokenData)
+                                    } action: {
+                                        selectedAppToken = tokenData
+                                        selectedCategoryToken = nil
                                     }
                                 }
                             }
-                            .foregroundStyle(.primary)
                         }
                     }
-                }
-                if !blockedCategoryTokens.isEmpty {
-                    Section(blockedTokens.isEmpty ? "Pick a category" : "Or a whole category") {
-                        ForEach(blockedCategoryTokens, id: \.self) { tokenData in
-                            Button {
-                                selectedCategoryToken = tokenData
-                                selectedAppToken = nil
-                            } label: {
-                                HStack {
-                                    categoryLabel(for: tokenData)
-                                    Spacer()
-                                    if selectedCategoryToken == tokenData {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(.tint)
+
+                    if !blockedCategoryTokens.isEmpty {
+                        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                            SectionEyebrow(
+                                text: blockedTokens.isEmpty
+                                    ? "Pick a category"
+                                    : "Or a whole category"
+                            )
+                            VStack(spacing: Theme.Space.sm) {
+                                ForEach(blockedCategoryTokens, id: \.self) { tokenData in
+                                    targetRow(
+                                        isSelected: selectedCategoryToken == tokenData,
+                                        icon: "square.stack.3d.up.fill"
+                                    ) {
+                                        categoryLabel(for: tokenData)
+                                    } action: {
+                                        selectedCategoryToken = tokenData
+                                        selectedAppToken = nil
                                     }
                                 }
                             }
-                            .foregroundStyle(.primary)
                         }
                     }
-                }
-                Section("Duration") {
-                    Picker("Minutes", selection: $durationMinutes) {
-                        ForEach(durationOptions, id: \.self) { m in
-                            Text("\(m) min").tag(m)
-                        }
+
+                    durationStepper
+                } else if case .allowed = availability {
+                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                        SectionEyebrow(text: "Nothing to break from")
+                        Text("Your active blocklist has no apps or categories that can be unshielded.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
                     }
-                    .pickerStyle(.segmented)
-                }
-            } else if case .allowed = availability {
-                Section {
-                    ContentUnavailableView(
-                        "Nothing to break from",
-                        systemImage: "square.stack.3d.up.slash",
-                        description: Text("Your active blocklist has no apps or categories that can be unshielded.")
-                    )
+                    .cardSurface()
                 }
             }
+            .padding(.horizontal, Theme.Space.lg)
+            .padding(.top, Theme.Space.md)
+            .padding(.bottom, Theme.Space.xxl)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .scrollContentBackground(.hidden)
         .background(Theme.canvas.ignoresSafeArea())
         .navigationTitle("Take a break")
         .navigationBarTitleDisplayMode(.inline)
@@ -115,6 +124,84 @@ struct BreakPickerView: View {
         }
     }
 
+    /// Stepper-style duration picker. Scales cleanly to any cap (PRD's
+    /// 10 min, debug's 2 min, future custom budgets). Replaces the
+    /// segmented control that didn't survive past ~5 options. (#18)
+    @ViewBuilder
+    private var durationStepper: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            SectionEyebrow(text: "Duration")
+            HStack(alignment: .center, spacing: Theme.Space.lg) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(durationMinutes)")
+                        .font(Theme.statNumber(40, weight: .semibold))
+                    Text("MIN")
+                        .font(Theme.label)
+                        .tracking(0.8)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                HStack(spacing: Theme.Space.sm) {
+                    stepperButton("minus", enabled: durationMinutes > 1) {
+                        durationMinutes = max(1, durationMinutes - 1)
+                    }
+                    stepperButton("plus", enabled: durationMinutes < maxMinutes) {
+                        durationMinutes = min(maxMinutes, durationMinutes + 1)
+                    }
+                }
+            }
+            .cardSurface()
+        }
+    }
+
+    private func stepperButton(_ icon: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(enabled ? Theme.accent : .secondary.opacity(0.4))
+                .frame(width: 44, height: 44)
+                .background(
+                    Circle().fill(enabled ? Theme.accentMuted : Color.primary.opacity(0.04))
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    /// Card-style row for an app or category target. Selected state gets
+    /// a clay-tinted background and an accent check. (#20)
+    @ViewBuilder
+    private func targetRow<Label: View>(
+        isSelected: Bool,
+        icon: String,
+        @ViewBuilder label: () -> Label,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: Theme.Space.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(isSelected ? Theme.accent : Theme.accentMuted)
+                        .frame(width: 40, height: 40)
+                    Image(systemName: icon)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(isSelected ? .white : Theme.accent)
+                }
+                label()
+                    .font(Theme.display(15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Spacer(minLength: Theme.Space.sm)
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.accent)
+                }
+            }
+            .cardSurface(padding: Theme.Space.md)
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Derived
 
     private var activeUnion: FamilyActivitySelection {
@@ -135,15 +222,21 @@ struct BreakPickerView: View {
     }
 
     private var blockedTokens: [Data] {
-        activeUnion.applicationTokens.compactMap {
-            try? PropertyListEncoder().encode($0)
-        }
+        Self.stableEncodedOrder(activeUnion.applicationTokens)
     }
 
     private var blockedCategoryTokens: [Data] {
-        activeUnion.categoryTokens.compactMap {
-            try? PropertyListEncoder().encode($0)
-        }
+        Self.stableEncodedOrder(activeUnion.categoryTokens)
+    }
+
+    /// Apple's tokens are opaque `Set` members — iteration order changes
+    /// per access, which made the picker rows reshuffle on every tick.
+    /// Encode them all and sort by their byte representation so the order
+    /// is the same across every render. (#17)
+    private static func stableEncodedOrder<T: Encodable>(_ tokens: Set<T>) -> [Data] {
+        tokens
+            .compactMap { try? PropertyListEncoder().encode($0) }
+            .sorted { $0.lexicographicallyPrecedes($1) }
     }
 
     private var hasAnyTarget: Bool {
@@ -157,9 +250,9 @@ struct BreakPickerView: View {
         return 0
     }
 
-    private var durationOptions: [Int] {
-        Self.presetMinutes.filter { $0 <= remainingMinutes }
-    }
+    /// Upper bound for the duration stepper. Drives both the `+` button's
+    /// disabled state and the clamp in `refresh()`.
+    private var maxMinutes: Int { remainingMinutes }
 
     private var canStart: Bool {
         guard case .allowed = availability, durationMinutes > 0 else { return false }
