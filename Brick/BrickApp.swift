@@ -1,12 +1,14 @@
 import FamilyControls
 import SwiftData
 import SwiftUI
+import UserNotifications
 
 @main
 struct BrickApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var intentInbox = BreakIntentInbox()
     @StateObject private var breakController: BreakSessionController
+    @StateObject private var router: AppRouter
 
     init() {
         // UI-test reset MUST run before the model container is touched —
@@ -34,10 +36,21 @@ struct BrickApp: App {
             }
         }
         Task { await NotificationService.shared.requestAuthorization() }
+
+        // Delegate must be set synchronously here, before SwiftUI's body
+        // runs, so taps that cold-launch the app are delivered.
+        UNUserNotificationCenter.current().delegate = NotificationService.shared
+
         let controller = BreakSessionController(
             context: Self.sharedModelContainer.mainContext
         )
         _breakController = StateObject(wrappedValue: controller)
+
+        let router = AppRouter()
+        _router = StateObject(wrappedValue: router)
+        NotificationService.shared.onTap = { route in
+            Task { @MainActor in router.handle(route) }
+        }
 
         // After the container is up, honor flags that need to write seed
         // state (e.g. pre-install a passcode for tests that drive the gate).
@@ -145,6 +158,7 @@ struct BrickApp: App {
                 .tint(Theme.accent)
                 .environmentObject(breakController)
                 .environmentObject(intentInbox)
+                .environmentObject(router)
                 .onAppear {
                     intentInbox.checkForIntent()
                     // Order matters: `resyncShield()` applies the *full*
@@ -160,6 +174,7 @@ struct BrickApp: App {
                     if phase == .active {
                         intentInbox.checkForIntent()
                         resyncShield()
+                        rerollScheduleNotifications()
                         breakController.refreshFromStore()
                     }
                 }
@@ -178,6 +193,14 @@ struct BrickApp: App {
     private func resyncShield() {
         try? ScheduleEngine(context: Self.sharedModelContainer.mainContext)
             .applyCurrentUnion()
+    }
+
+    /// Roll forward the schedule start/end notification window. Pending
+    /// notifications only cover the next 3 days; calling `sync()` again on
+    /// each foreground advances the window so distant occurrences eventually
+    /// get scheduled. Best-effort — failures are logged inside `sync()`.
+    private func rerollScheduleNotifications() {
+        try? ScheduleEngine(context: Self.sharedModelContainer.mainContext).sync()
     }
 
     static let sharedModelContainer: ModelContainer = {

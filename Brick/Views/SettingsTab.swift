@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SettingsTab: View {
     @Environment(\.modelContext) private var context
+    @EnvironmentObject private var router: AppRouter
     @Query(sort: \TravelPeriod.createdAt, order: .reverse)
     private var travelPeriods: [TravelPeriod]
     @State private var settings: AppSettings?
@@ -52,6 +53,9 @@ struct SettingsTab: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                }
+                .navigationDestination(isPresented: $router.presentTravelMode) {
+                    TravelModeView()
                 }
 
                 Section("Coming soon") {

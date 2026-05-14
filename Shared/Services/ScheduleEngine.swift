@@ -207,6 +207,8 @@ struct ScheduleEngine {
         }
         try context.save()
 
+        rescheduleNotifications(schedules: schedules, now: now)
+
         // Skip the DeviceActivity registration entirely if FamilyControls
         // hasn't been authorized. The persistence side already settled
         // above; the user can re-grant auth later and a future sync will
@@ -305,6 +307,35 @@ extension ScheduleEngine {
 }
 
 private extension ScheduleEngine {
+    /// Reschedule the 5-min-out and 1-min-out notifications for every
+    /// enabled, non-expired schedule. Idempotent: prefix-cancel removes the
+    /// previous occurrence ids so a schedule edit doesn't leave stale fires.
+    /// Cap of 3 days × N schedules × 2 keeps total pending well under iOS's
+    /// 64-request ceiling.
+    func rescheduleNotifications(schedules: [Schedule], now: Date) {
+        for schedule in schedules {
+            NotificationService.shared.cancelBlockNotifications(scheduleID: schedule.id)
+            guard schedule.enabled, !schedule.isExpired else { continue }
+            let occurrences = ScheduleClock.upcomingOccurrences(
+                for: schedule, from: now, days: 3
+            )
+            for occ in occurrences {
+                NotificationService.shared.scheduleBlockStarting(
+                    scheduleID: schedule.id,
+                    scheduleName: schedule.name,
+                    startsAt: occ.start,
+                    now: now
+                )
+                NotificationService.shared.scheduleBlockEnding(
+                    scheduleID: schedule.id,
+                    scheduleName: schedule.name,
+                    endsAt: occ.end,
+                    now: now
+                )
+            }
+        }
+    }
+
     func register(_ oneShot: OneShotBlock) throws {
         let cal = Calendar.current
         let startComps = cal.dateComponents(

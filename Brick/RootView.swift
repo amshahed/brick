@@ -3,18 +3,23 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(\.modelContext) private var context
+    @EnvironmentObject private var router: AppRouter
     @State private var showingSetup = false
     @State private var showingOnboarding = false
 
     var body: some View {
-        TabView {
+        TabView(selection: $router.selectedTab) {
             HomeTab()
+                .tag(AppRouter.Tab.home)
                 .tabItem { Label("Home", systemImage: "house.fill") }
             BlocklistsTab()
+                .tag(AppRouter.Tab.blocklists)
                 .tabItem { Label("Blocklists", systemImage: "square.stack.fill") }
             SchedulesTab()
+                .tag(AppRouter.Tab.schedules)
                 .tabItem { Label("Schedules", systemImage: "calendar") }
             SettingsTab()
+                .tag(AppRouter.Tab.settings)
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
         .task { checkLaunchState() }
@@ -44,4 +49,5 @@ struct RootView: View {
 
 #Preview {
     RootView()
+        .environmentObject(AppRouter())
 }

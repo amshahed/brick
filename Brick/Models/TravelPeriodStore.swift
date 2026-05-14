@@ -48,6 +48,7 @@ struct TravelPeriodStore {
         let engine = ScheduleEngine(context: context)
         try engine.sync()
         try engine.registerTravelEndReminder(period)
+        NotificationService.shared.scheduleTravelEnding(periodEndsAt: end)
         return period
     }
 
@@ -57,6 +58,7 @@ struct TravelPeriodStore {
         let engine = ScheduleEngine(context: context)
         try engine.sync()
         try engine.registerTravelEndReminder(period)
+        NotificationService.shared.cancelTravelEnding()
         Task { await TravelNudgeScheduler.cancelAll() }
     }
 
@@ -67,5 +69,6 @@ struct TravelPeriodStore {
             period.endDate = now
         }
         try context.save()
+        NotificationService.shared.cancelTravelEnding()
     }
 }

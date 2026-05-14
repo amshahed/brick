@@ -126,6 +126,70 @@ enum ScheduleClock {
         }
     }
 
+    struct UpcomingOccurrence: Equatable {
+        let start: Date
+        let end: Date
+    }
+
+    /// Generate concrete (start, end) pairs for the next `days` days that
+    /// match `schedule`'s weekday mask and date bounds. Wrap-past-midnight
+    /// schedules produce occurrences whose `end` is on the day after `start`.
+    /// Excludes occurrences whose entire window is already past (`end <= now`)
+    /// — but keeps in-progress ones (start in past, end in future) so the
+    /// caller can still schedule the END notification. Disabled or expired
+    /// schedules return `[]`.
+    static func upcomingOccurrences(
+        for schedule: Schedule,
+        from now: Date,
+        days: Int,
+        calendar: Calendar = .current
+    ) -> [UpcomingOccurrence] {
+        guard schedule.enabled else { return [] }
+        // Use the injected `now` rather than `schedule.isExpired` (which
+        // reads real-world Date.now) so this function is fully testable.
+        if let endDate = schedule.endDate,
+           now >= calendar.startOfDay(for: endDate).addingTimeInterval(24 * 3600) {
+            return []
+        }
+        var results: [UpcomingOccurrence] = []
+        let startOfToday = calendar.startOfDay(for: now)
+        let (sh, sm) = components(from: schedule.startMinute)
+        let (eh, em) = components(from: schedule.endMinute)
+        let wraps = schedule.startMinute >= schedule.endMinute
+
+        for dayOffset in 0..<days {
+            guard let dayStart = calendar.date(byAdding: .day, value: dayOffset, to: startOfToday) else { continue }
+            if let startDate = schedule.startDate,
+               dayStart < calendar.startOfDay(for: startDate) { continue }
+            if let endDate = schedule.endDate,
+               dayStart >= calendar.startOfDay(for: endDate).addingTimeInterval(24 * 3600) { continue }
+
+            let weekday = calendar.component(.weekday, from: dayStart)
+            guard let dayMask = WeekdayMask.orderedWeekdays
+                .first(where: { $0.appleWeekday == weekday })?.mask,
+                  schedule.weekdayMask.contains(dayMask) else { continue }
+
+            guard let occStart = calendar.date(
+                byAdding: DateComponents(hour: sh, minute: sm),
+                to: dayStart
+            ) else { continue }
+            let endDay: Date
+            if wraps {
+                guard let nextDay = calendar.date(byAdding: .day, value: 1, to: dayStart) else { continue }
+                endDay = nextDay
+            } else {
+                endDay = dayStart
+            }
+            guard let occEnd = calendar.date(
+                byAdding: DateComponents(hour: eh, minute: em),
+                to: endDay
+            ) else { continue }
+            if occEnd <= now { continue }
+            results.append(UpcomingOccurrence(start: occStart, end: occEnd))
+        }
+        return results
+    }
+
     private static func mask(for appleWeekday: Int) -> WeekdayMask {
         switch appleWeekday {
         case 1: return .sun
