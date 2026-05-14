@@ -14,15 +14,6 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
             subtitle: ShieldConfiguration.Label(
                 text: subtitleText(for: application),
                 color: UIColor.secondaryLabel
-            ),
-            primaryButtonLabel: ShieldConfiguration.Label(
-                text: "Take a break",
-                color: UIColor.white
-            ),
-            primaryButtonBackgroundColor: UIColor.systemBlue,
-            secondaryButtonLabel: ShieldConfiguration.Label(
-                text: "OK",
-                color: UIColor.secondaryLabel
             )
         )
     }
@@ -47,8 +38,8 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
 
     private func subtitleText(for application: Application) -> String {
         if let name = application.localizedDisplayName {
-            return "\(name) is paused. Take a short break to unlock it for a few minutes."
+            return "\(name) is paused. Open Brick to start a break."
         }
-        return "This app is paused. Take a short break to unlock it for a few minutes."
+        return "This app is paused. Open Brick to start a break."
     }
 }
