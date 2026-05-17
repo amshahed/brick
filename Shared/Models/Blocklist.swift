@@ -21,9 +21,13 @@ final class Blocklist {
 
     var selectionSummary: String {
         let s = selection
-        let apps = s.applicationTokens.count + s.applications.count
-        let cats = s.categoryTokens.count + s.categories.count
-        let domains = s.webDomainTokens.count + s.webDomains.count
+        // Under .individual auth, FamilyActivityPicker populates both the
+        // opaque-token set and the Application/Category/WebDomain struct set
+        // with the same picks — summing the two doubles the count. Take the
+        // max so we still get the right number if either set is empty. (#31)
+        let apps = max(s.applicationTokens.count, s.applications.count)
+        let cats = max(s.categoryTokens.count, s.categories.count)
+        let domains = max(s.webDomainTokens.count, s.webDomains.count)
 
         var parts: [String] = []
         if apps > 0 { parts.append("\(apps) app\(apps == 1 ? "" : "s")") }

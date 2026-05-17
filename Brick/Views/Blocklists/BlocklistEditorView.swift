@@ -135,8 +135,10 @@ struct BlocklistEditorView: View {
     }
 
     private var summary: String {
-        let apps = selection.applicationTokens.count + selection.applications.count
-        let cats = selection.categoryTokens.count + selection.categories.count
+        // See Blocklist.selectionSummary — picker double-populates token and
+        // struct sets, so max() is the real count. (#31)
+        let apps = max(selection.applicationTokens.count, selection.applications.count)
+        let cats = max(selection.categoryTokens.count, selection.categories.count)
         let total = apps + cats
         return total == 0 ? "None" : "\(total) selected"
     }
