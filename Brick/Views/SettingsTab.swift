@@ -127,7 +127,7 @@ struct SettingsTab: View {
             )) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Fast break timings")
-                    Text("Cold start 2m · window 3m · cap 2m · overage cap 3m. The Test (now) template scales to a 10-minute schedule. Off restores PRD values (25/60/10/15).")
+                    Text("Cold start 2m · window 3m · cap 2m · overage cap 3m. The Test template starts 7 min from now and runs 10 min so you can see the 5-min-before-start and 1-min-before-end notifications. Off restores PRD values (25/60/10/15).")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

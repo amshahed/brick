@@ -86,12 +86,31 @@ struct BrickApp: App {
         }
     }
 
-    /// Delete rows whose load-bearing relationships are nil — leftover
-    /// state from a prior crash mid-cascade-delete. Without this, the
-    /// next access to `schedule.blocklist?` traps with SwiftData's
-    /// "model instance was invalidated" fatal error. (#24)
+    /// Delete rows whose load-bearing relationships are nil OR dangle —
+    /// leftover state from a prior crash mid-cascade-delete. Without this,
+    /// the next access to `schedule.blocklist?` or `session.schedule?.x`
+    /// traps with SwiftData's "model instance was invalidated" fatal error.
+    /// (#24, and the BlockSession.schedule-dangling variant.)
+    ///
+    /// Why the relationships dangle: none of the @Model classes declare
+    /// `@Relationship(inverse:)`, so SwiftData has no inverse to walk when
+    /// the parent is deleted. The child's relationship column stays pointed
+    /// at the gone row, and accessing the resulting faulted stub traps.
     private static func cleanUpOrphanedRows(context: ModelContext) {
         do {
+            // Live-ID sets used to detect dangling BlockSession sources.
+            // `persistentModelID` is the relationship's FK and is safe to
+            // read even on a faulted stub — only snapshot-backed property
+            // access traps.
+            let liveScheduleIDs = Set(
+                try context.fetch(FetchDescriptor<Schedule>())
+                    .map(\.persistentModelID)
+            )
+            let liveOneShotIDs = Set(
+                try context.fetch(FetchDescriptor<OneShotBlock>())
+                    .map(\.persistentModelID)
+            )
+
             // Schedules whose blocklist relationship is nil.
             let schedules = try context.fetch(FetchDescriptor<Schedule>())
             var removed = 0
@@ -104,6 +123,20 @@ struct BrickApp: App {
             for oneShot in oneShots where oneShot.blocklist == nil {
                 context.delete(oneShot)
                 removed += 1
+            }
+            // BlockSessions whose source (schedule or one-shot) row is gone.
+            // Compare the relationship's persistentModelID against the live
+            // ID set; delete any session whose source can't be resolved.
+            let allSessions = try context.fetch(FetchDescriptor<BlockSession>())
+            for session in allSessions {
+                let scheduleID = session.schedule?.persistentModelID
+                let oneShotID = session.oneShotBlock?.persistentModelID
+                let scheduleDangling = scheduleID.map { !liveScheduleIDs.contains($0) } ?? false
+                let oneShotDangling = oneShotID.map { !liveOneShotIDs.contains($0) } ?? false
+                if scheduleDangling || oneShotDangling {
+                    context.delete(session)
+                    removed += 1
+                }
             }
             // Open BlockSessions whose source (schedule or one-shot) is gone.
             let openSessions = try context.fetch(

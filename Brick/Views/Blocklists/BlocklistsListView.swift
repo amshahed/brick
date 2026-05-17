@@ -36,12 +36,18 @@ struct BlocklistsListView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 6, leading: Theme.Space.lg, bottom: 6, trailing: Theme.Space.lg))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
+                        // No `role: .destructive` — see SchedulesListView
+                        // for the rationale. Short version: destructive
+                        // swipes animate the row out before the passcode
+                        // gate resolves, leaving the row hidden but the
+                        // data intact when the user cancels.
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button {
                                 attemptDelete(blocklist)
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
+                            .tint(.red)
                         }
                     }
                 }

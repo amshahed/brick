@@ -53,12 +53,20 @@ struct SchedulesListView: View {
                         // the embedded NavigationLink in the row's ZStack
                         // confused iOS's implicit delete handler, leading
                         // to apparent hangs. (#22)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
+                        //
+                        // No `role: .destructive` — that would animate the
+                        // row out on tap, before the passcode gate resolves.
+                        // If the user cancels the gate, the data is intact
+                        // but the row stays hidden until @Query refetches.
+                        // Plain red-tinted button keeps the look without the
+                        // optimistic removal animation.
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button {
                                 requestDelete(schedule: schedule)
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
+                            .tint(.red)
                         }
                     }
                 }
