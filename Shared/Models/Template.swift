@@ -88,22 +88,23 @@ enum TemplateLibrary {
         let useFast = UserDefaults.standard.bool(
             forKey: BreakQuotaEngine.debugFastTimingsKey
         )
-        // Fast: starts 2 min from now, runs 10 minutes (ends T+12). Tuned
-        // for quick iteration on the block lifecycle and the 1-min-before-end
-        // notification (which fires at T+11). The 5-min-before-start
-        // notification is skipped at this offset (lead > window) — that path
-        // has already been validated separately. Slow: ±2 hours, the original
-        // "block now" behavior.
+        // Fast: starts 2 min from now, runs 16 minutes (ends T+18). The
+        // window must be >= 15 min — iOS DeviceActivity silently rejects
+        // anything shorter, so the extension never wakes and the schedule
+        // only "starts" the next time the app comes to the foreground.
+        // 16 min clears the floor with a 1-min buffer and still lets the
+        // 1-min-before-end notification fire at T+17. Slow: ±2 hours, the
+        // original "block now" behavior. (#33)
         let startOffset = useFast ? 2 : -120
-        let endOffset = useFast ? 12 : 120
+        let endOffset = useFast ? 18 : 120
         let start = ((nowMin + startOffset) % 1440 + 1440) % 1440
         let end = ((nowMin + endOffset) % 1440 + 1440) % 1440
 
         return Template(
             id: "test-now",
-            name: useFast ? "Test (T+2 → T+12, 10-min)" : "Test (now ±2h)",
+            name: useFast ? "Test (T+2 → T+18, 16-min)" : "Test (now ±2h)",
             description: useFast
-                ? "Debug only. Starts in 2 min, runs 10 min. Fires the 1-min-before-end notification at T+11. Pair with Settings → Debug → Fast break timings."
+                ? "Debug only. Starts in 2 min, runs 16 min. Window is ≥ 15 min to clear iOS DeviceActivity's minimum. 1-min-before-end notification fires at T+17. Pair with Settings → Debug → Fast break timings."
                 : "Debug only. 4-hour window centered on the current time so blocks fire immediately.",
             startMinute: start,
             endMinute: end,

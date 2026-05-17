@@ -122,7 +122,7 @@ struct SettingsTab: View {
             )) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Fast break timings")
-                    Text("Cold start 2m · window 3m · cap 2m · overage cap 3m. The Test template starts 2 min from now and runs 10 min (ends T+12); 1-min-before-end notification fires at T+11. Off restores PRD values (25/60/10/15).")
+                    Text("Cold start 2m · window 3m · cap 2m · overage cap 3m. The Test template starts 2 min from now and runs 16 min (ends T+18) — iOS DeviceActivity requires a ≥ 15-min window or schedules never fire. Off restores PRD values (25/60/10/15).")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

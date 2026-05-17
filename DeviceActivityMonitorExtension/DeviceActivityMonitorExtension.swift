@@ -5,11 +5,13 @@ import SwiftData
 final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     override func intervalDidStart(for activity: DeviceActivityName) {
         super.intervalDidStart(for: activity)
+        print("[Brick.Ext] intervalDidStart \(activity.rawValue) at \(Date.now)")
         reconcile()
     }
 
     override func intervalDidEnd(for activity: DeviceActivityName) {
         super.intervalDidEnd(for: activity)
+        print("[Brick.Ext] intervalDidEnd \(activity.rawValue) at \(Date.now)")
         reconcile()
     }
 

@@ -363,6 +363,18 @@ private extension Schedule {
         start: DateComponents,
         end: DateComponents
     ) throws {
+        // iOS DeviceActivity requires intervalEnd - intervalStart >= 15 min.
+        // Shorter windows are silently rejected — the extension never fires
+        // intervalDidStart, so the block never engages from the closed-app
+        // path. Log loudly so debugging short-window schedules is obvious.
+        // (#33)
+        let startMinute = (start.hour ?? 0) * 60 + (start.minute ?? 0)
+        let endMinute = (end.hour ?? 0) * 60 + (end.minute ?? 0)
+        let windowMin = endMinute - startMinute
+        print("[Brick] register DA monitor \(name.rawValue) start=\(start.hour ?? 0):\(start.minute ?? 0) end=\(end.hour ?? 0):\(end.minute ?? 0) weekday=\(start.weekday ?? 0) window=\(windowMin)m")
+        if windowMin > 0 && windowMin < 15 {
+            print("[Brick] WARN: DA window \(windowMin)m < 15m — iOS will not fire this monitor")
+        }
         let dev = DeviceActivitySchedule(
             intervalStart: start,
             intervalEnd: end,
