@@ -5,18 +5,21 @@ struct HomeTab: View {
     @Environment(\.modelContext) private var context
     @EnvironmentObject private var controller: BreakSessionController
     @EnvironmentObject private var intentInbox: BreakIntentInbox
-    @Query private var oneShots: [OneShotBlock]
-    @Query private var schedules: [Schedule]
     @Query private var blocklists: [Blocklist]
     @Query(sort: \TravelPeriod.createdAt, order: .reverse)
     private var travelPeriods: [TravelPeriod]
     @Query(filter: #Predicate<BlockSession> { $0.actualEnd != nil })
     private var completedSessions: [BlockSession]
+    @Query(
+        filter: #Predicate<BlockSession> { $0.actualEnd == nil },
+        sort: \BlockSession.actualStart,
+        order: .forward
+    )
+    private var openSessions: [BlockSession]
     @State private var showingBlockNow = false
     @State private var showingBreak = false
     @State private var breakPreselect: Data?
     @State private var now: Date = .now
-    @State private var availability: BreakAvailability = .noActiveBlock
     @State private var pendingCancelOneShot: OneShotBlock?
     @State private var showCancelGate = false
     @State private var settings: AppSettings?
@@ -49,25 +52,36 @@ struct HomeTab: View {
                             onDismiss: { nudgeDismissed = true }
                         )
                     }
-                    if hasActiveBlock {
-                        if let active = controller.active {
-                            ActiveBreakCard(active: active) {
-                                breakPreselect = nil
-                                showingBreak = true
-                            }
+                    if let active = controller.active {
+                        // Break running: the break row owns the home screen;
+                        // block rows are hidden so attention is on the
+                        // remaining break time. (#35)
+                        ActiveBreakCard(active: active) {
+                            breakPreselect = nil
+                            showingBreak = true
                         }
-                        ActiveBlockCard(
-                            oneShots: activeOneShots,
-                            now: now,
-                            onAddAnother: { showingBlockNow = true },
-                            onCancelOneShot: requestCancel
-                        )
-                        // Hide the "View break" duplicate while the card is
-                        // up; keep the button for the take-a-break /
-                        // cold-start-hint cases when no break is running.
-                        if controller.active == nil {
-                            breakButton
+                    } else if !openSessions.isEmpty {
+                        // One progress row per active block (schedule or
+                        // one-shot). Tapping any row opens the break sheet,
+                        // which surfaces cold-start / quota / no-break-
+                        // possible state inline — so there's no separate
+                        // "Take a break" button on home.
+                        ForEach(openSessions) { session in
+                            ActiveBlockTimerRow(
+                                name: blockName(for: session),
+                                actualStart: session.actualStart,
+                                scheduledEnd: session.effectiveEnd
+                                    ?? session.scheduledEnd
+                                    ?? now.addingTimeInterval(60),
+                                subtitle: blockSubtitle(for: session),
+                                onCancel: cancelHandler(for: session),
+                                onTap: {
+                                    breakPreselect = nil
+                                    showingBreak = true
+                                }
+                            )
                         }
+                        addAnotherBlockButton
                     } else {
                         idleHero
                     }
@@ -90,7 +104,6 @@ struct HomeTab: View {
             }
             .onReceive(timer) { instant in
                 now = instant
-                refreshAvailability()
                 refreshStats(at: instant)
             }
             .sheet(isPresented: $showFocusOnboarding, onDismiss: loadSettings) {
@@ -129,34 +142,6 @@ struct HomeTab: View {
         }
     }
 
-    private var activeOneShots: [OneShotBlock] {
-        oneShots
-            .filter { $0.startedAt <= now && now < $0.expiresAt }
-            .sorted(by: { $0.expiresAt < $1.expiresAt })
-    }
-
-    private var activeSchedules: [Schedule] {
-        schedules.filter { schedule in
-            guard schedule.enabled else { return false }
-            return ScheduleClock.isActive(
-                weekdayMask: schedule.weekdayMask,
-                startMinute: schedule.startMinute,
-                endMinute: schedule.endMinute,
-                startDate: schedule.startDate,
-                endDate: schedule.endDate,
-                at: now
-            )
-        }
-    }
-
-    private var hasActiveBlock: Bool {
-        !activeOneShots.isEmpty || !activeSchedules.isEmpty
-    }
-
-    private func refreshAvailability() {
-        availability = (try? controller.availability()) ?? .noActiveBlock
-    }
-
     private func refreshStats(at instant: Date) {
         let engine = StatsEngine(context: context)
         todayBlocked = engine.blockedToday(now: instant)
@@ -189,59 +174,38 @@ struct HomeTab: View {
         }
     }
 
+    // MARK: - Block row helpers
+
+    private func blockName(for session: BlockSession) -> String {
+        session.schedule?.name
+            ?? session.oneShotBlock?.blocklist?.name
+            ?? "Block"
+    }
+
+    private func blockSubtitle(for session: BlockSession) -> String {
+        session.schedule?.blocklist?.selectionSummary
+            ?? session.oneShotBlock?.blocklist?.selectionSummary
+            ?? ""
+    }
+
+    /// Only one-shots are user-cancellable from the home row — schedules
+    /// are managed from the Schedules tab. Returns nil for schedule-backed
+    /// sessions so the row hides the `×`.
+    private func cancelHandler(for session: BlockSession) -> (() -> Void)? {
+        guard let oneShot = session.oneShotBlock else { return nil }
+        return { requestCancel(oneShot) }
+    }
+
     @ViewBuilder
-    private var breakButton: some View {
-        VStack(spacing: Theme.Space.sm) {
-            Button {
-                breakPreselect = nil
-                showingBreak = true
-            } label: {
-                Label(breakButtonLabel, systemImage: "pause.circle.fill")
-            }
-            .buttonStyle(.brickPrimary)
-            .opacity(isBreakAllowed ? 1.0 : 0.4)
-            .disabled(!isBreakAllowed)
-
-            if let note = breakHintNote {
-                Text(note)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
+    private var addAnotherBlockButton: some View {
+        Button {
+            showingBlockNow = true
+        } label: {
+            Label("Add another block", systemImage: "plus")
         }
-    }
-
-    private var breakButtonLabel: String {
-        // Brick has no pause/resume model — the button just re-opens the
-        // active-break sheet. "View break" reflects that without the
-        // misleading "Resume" word. (#19)
-        if controller.active != nil { return "View break" }
-        return "Take a break"
-    }
-
-    private var isBreakAllowed: Bool {
-        if controller.active != nil { return true }
-        if case .allowed = availability { return true }
-        return false
-    }
-
-    private var breakHintNote: String? {
-        switch availability {
-        case .allowed, .noActiveBlock: return nil
-        case .coldStart(let endsAt):
-            return "Cold start ends in \(formatShort(to: endsAt))."
-        case .quotaExhausted(let availableAt):
-            return "More break time in \(formatShort(to: availableAt))."
-        case .overageLockout:
-            return "Locked out until this block ends."
-        }
-    }
-
-    private func formatShort(to date: Date) -> String {
-        let remaining = max(0, Int(date.timeIntervalSince(now)))
-        let m = remaining / 60
-        let s = remaining % 60
-        return String(format: "%d:%02d", m, s)
+        .buttonStyle(.brickSecondary)
+        .disabled(blocklists.isEmpty)
+        .opacity(blocklists.isEmpty ? 0.4 : 1)
     }
 
     @ViewBuilder

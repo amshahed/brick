@@ -252,9 +252,42 @@ struct BreakPickerView: View {
         return 0
     }
 
+    /// End of the latest active block (schedule or one-shot). A break can
+    /// never run past this — the shield drops and there's nothing to take
+    /// a break *from*. (#35)
+    private var blockEnd: Date? {
+        let scheduleEnds: [Date] = schedules
+            .filter(\.enabled)
+            .compactMap { schedule in
+                ScheduleClock.currentOccurrenceEnd(
+                    weekdayMask: schedule.weekdayMask,
+                    startMinute: schedule.startMinute,
+                    endMinute: schedule.endMinute,
+                    startDate: schedule.startDate,
+                    endDate: schedule.endDate,
+                    at: now
+                )
+            }
+        let oneShotEnds = oneShots
+            .filter { $0.startedAt <= now && now < $0.expiresAt }
+            .map(\.expiresAt)
+        return (scheduleEnds + oneShotEnds).max()
+    }
+
+    /// Whole-minute count of how much block time is left before any break
+    /// would be pointless. `floor` because partial minutes aren't usable for
+    /// a `min`-bounded duration stepper.
+    private var blockRemainingMinutes: Int {
+        guard let blockEnd else { return Int.max }
+        let secondsLeft = blockEnd.timeIntervalSince(now)
+        return max(0, Int(secondsLeft / 60))
+    }
+
     /// Upper bound for the duration stepper. Drives both the `+` button's
     /// disabled state and the clamp in `refresh()`.
-    private var maxMinutes: Int { remainingMinutes }
+    private var maxMinutes: Int {
+        min(remainingMinutes, blockRemainingMinutes)
+    }
 
     private var canStart: Bool {
         guard case .allowed = availability, durationMinutes > 0 else { return false }
@@ -291,11 +324,21 @@ struct BreakPickerView: View {
     private var availabilityBanner: some View {
         switch availability {
         case .allowed(let remaining):
-            Label(
-                "\(Int(remaining / 60)) min available this hour",
-                systemImage: "hourglass"
-            )
-            .foregroundStyle(.secondary)
+            if let blockEnd, blockRemainingMinutes < 1 {
+                // Quota is available but the block has < 1 min left, so
+                // no break duration is meaningful. (#35 Q3, allowed edge)
+                banner(
+                    title: "Block ending",
+                    detail: "Block ends in \(formatCountdown(to: blockEnd)) — no break possible.",
+                    systemImage: "clock.badge.xmark"
+                )
+            } else {
+                Label(
+                    "\(min(Int(remaining / 60), blockRemainingMinutes)) min available",
+                    systemImage: "hourglass"
+                )
+                .foregroundStyle(.secondary)
+            }
         case .coldStart(let endsAt):
             banner(
                 title: "Cold start",
@@ -303,16 +346,26 @@ struct BreakPickerView: View {
                 systemImage: "snowflake"
             )
         case .quotaExhausted(let availableAt):
-            VStack(alignment: .leading, spacing: 8) {
+            if let blockEnd, availableAt > blockEnd {
+                // Quota refreshes after the block already ends — there's
+                // no useful break to offer. (#35 Q3)
                 banner(
-                    title: "Break quota used",
-                    detail: "More time available in \(formatCountdown(to: availableAt)).",
-                    systemImage: "gauge.with.dots.needle.0percent"
+                    title: "Block ends before quota refreshes",
+                    detail: "Block ends in \(formatCountdown(to: blockEnd)) — no break possible.",
+                    systemImage: "clock.badge.xmark"
                 )
-                Button("Override (extends block)", action: onOverride)
-                    .font(.footnote)
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.orange)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    banner(
+                        title: "Break quota used",
+                        detail: "More time available in \(formatCountdown(to: availableAt)).",
+                        systemImage: "gauge.with.dots.needle.0percent"
+                    )
+                    Button("Override (extends block)", action: onOverride)
+                        .font(.footnote)
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.orange)
+                }
             }
         case .overageLockout:
             banner(
