@@ -23,6 +23,15 @@ final class DeviceActivityMonitorExtension: DeviceActivityMonitor {
     }
 
     private func reconcile() {
+        // The extension is its own process. `BreakQuotaEngine.coldStartDuration`
+        // and friends are process-local statics, so without re-applying the
+        // user's debug-timings preference here, a BlockSession opened from
+        // a closed-app wake-up is stamped with the production 25-min cold
+        // start. Reads from the app-group suite so the toggle is visible
+        // across processes. (#34)
+        BreakQuotaEngine.applyDebugTimings(
+            SharedDefaults.shared.bool(forKey: BreakQuotaEngine.debugFastTimingsKey)
+        )
         do {
             // Schema MUST match the main app's container exactly. Mismatched
             // schemas opening the same SQLite file have produced "store

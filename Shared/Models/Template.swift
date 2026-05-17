@@ -85,7 +85,7 @@ enum TemplateLibrary {
         let comps = cal.dateComponents([.hour, .minute], from: now)
         let nowMin = (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
 
-        let useFast = UserDefaults.standard.bool(
+        let useFast = SharedDefaults.shared.bool(
             forKey: BreakQuotaEngine.debugFastTimingsKey
         )
         // Fast: starts 2 min from now, runs 16 minutes (ends T+18). The

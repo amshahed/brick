@@ -24,3 +24,14 @@ enum SharedContainer {
         containerURL.appendingPathComponent("Brick.sqlite")
     }
 }
+
+/// App-group–scoped UserDefaults so the main app and extensions share
+/// state (e.g. the debug "fast break timings" toggle). `UserDefaults.standard`
+/// is per-process and won't propagate across the boundary. Falls back to
+/// `.standard` when the App Group entitlement isn't applied (simulator,
+/// some test contexts) so callers don't have to special-case nil.
+enum SharedDefaults {
+    static var shared: UserDefaults {
+        UserDefaults(suiteName: SharedContainer.appGroup) ?? .standard
+    }
+}

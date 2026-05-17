@@ -114,9 +114,9 @@ struct SettingsTab: View {
     private var debugSection: some View {
         Section("Debug") {
             Toggle(isOn: Binding(
-                get: { UserDefaults.standard.bool(forKey: BreakQuotaEngine.debugFastTimingsKey) },
+                get: { SharedDefaults.shared.bool(forKey: BreakQuotaEngine.debugFastTimingsKey) },
                 set: { newValue in
-                    UserDefaults.standard.set(newValue, forKey: BreakQuotaEngine.debugFastTimingsKey)
+                    SharedDefaults.shared.set(newValue, forKey: BreakQuotaEngine.debugFastTimingsKey)
                     BreakQuotaEngine.applyDebugTimings(newValue)
                 }
             )) {

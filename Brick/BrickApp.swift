@@ -16,9 +16,13 @@ struct BrickApp: App {
         // store creates the SQLite file we want to clean.
         Self.applyUITestPreContainerFlags()
 
-        // Apply persisted debug-timing preference (DEBUG builds only).
+        // Apply persisted debug-timing preference (DEBUG builds only). The
+        // flag lives in the app-group suite so the DeviceActivityMonitor
+        // extension reads the same value — otherwise the extension picks
+        // production timings and the cold-start written into a freshly
+        // opened BlockSession lags the toggle. (#34)
         BreakQuotaEngine.applyDebugTimings(
-            UserDefaults.standard.bool(forKey: BreakQuotaEngine.debugFastTimingsKey)
+            SharedDefaults.shared.bool(forKey: BreakQuotaEngine.debugFastTimingsKey)
         )
 
         // Defensive cleanup for orphaned rows left over from prior crashes.
