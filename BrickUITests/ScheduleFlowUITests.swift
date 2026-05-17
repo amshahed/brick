@@ -32,11 +32,16 @@ final class ScheduleFlowUITests: BrickUITestCase {
         switchToTab("Schedules")
         tap(app.buttons["Start from template"])
 
-        // The DEBUG-only template's name is "Test (now ±2h)".
-        let testTemplate = app.staticTexts["Test (now ±2h)"]
+        // The DEBUG-only template's name changes with the fast-timings
+        // flag — pin the assertion to the stable "Test (" prefix rather
+        // than the variable display string. (#33/#34 made the name
+        // dynamic; #38 unflakes this test.)
+        let testTemplate = app.staticTexts.containing(NSPredicate(
+            format: "label BEGINSWITH %@", "Test ("
+        )).firstMatch
         XCTAssertTrue(
             testTemplate.waitForExistence(timeout: 3),
-            "DEBUG builds should expose the now ±2h test template so devs can exercise active-block UI."
+            "DEBUG builds should expose a Test template so devs can exercise active-block UI."
         )
     }
 

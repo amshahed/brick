@@ -65,7 +65,9 @@ struct BrickApp: App {
 
     /// Pre-container UI-test flags. Runs before SQLite is opened.
     /// - `--ui-test-reset-store`: deletes the SQLite store + clears the
-    ///   onboarding UserDefaults backstop.
+    ///   onboarding UserDefaults backstop + wipes the app-group
+    ///   SharedDefaults suite so flags (debug-fast-timings, future shared
+    ///   keys) don't leak between runs. (#38)
     /// - `--ui-test-skip-onboarding`: writes the UserDefaults backstop so
     ///   `RootView` routes past onboarding.
     private static func applyUITestPreContainerFlags() {
@@ -81,12 +83,26 @@ struct BrickApp: App {
             UserDefaults.standard.removeObject(
                 forKey: AppSettingsStore.onboardingCompletedDefaultsKey
             )
+            // Clear every key in the app-group suite so persisted flags
+            // from a prior test (or a developer session) don't bleed in.
+            let suite = SharedDefaults.shared
+            for key in suite.dictionaryRepresentation().keys {
+                suite.removeObject(forKey: key)
+            }
         }
         if args.contains("--ui-test-skip-onboarding") {
             UserDefaults.standard.set(
                 true,
                 forKey: AppSettingsStore.onboardingCompletedDefaultsKey
             )
+        }
+        // Pre-seed the debug-fast-timings flag so UI tests can exercise
+        // the read-side propagation (Template names, BreakQuotaEngine
+        // timings) without having to drive the SwiftUI Toggle directly —
+        // iOS 26's XCUITest interaction with custom-binding Toggles is
+        // unreliable. (#38)
+        if args.contains("--ui-test-fast-timings") {
+            SharedDefaults.shared.set(true, forKey: BreakQuotaEngine.debugFastTimingsKey)
         }
     }
 

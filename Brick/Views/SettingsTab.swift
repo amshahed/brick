@@ -127,6 +127,7 @@ struct SettingsTab: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            .accessibilityIdentifier("settings.debug.fastTimings")
         }
     }
     #endif
