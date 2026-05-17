@@ -88,20 +88,22 @@ enum TemplateLibrary {
         let useFast = UserDefaults.standard.bool(
             forKey: BreakQuotaEngine.debugFastTimingsKey
         )
-        // Fast: starts 7 min from now, ends 10 min after that — tuned to
-        // exercise the 5-min-before-start and 1-min-before-end notifications
-        // in a single 17-minute observation window. Slow: ±2 hours, the
-        // original "block now" behavior.
-        let startOffset = useFast ? 7 : -120
-        let endOffset = useFast ? 17 : 120
+        // Fast: starts 2 min from now, runs 10 minutes (ends T+12). Tuned
+        // for quick iteration on the block lifecycle and the 1-min-before-end
+        // notification (which fires at T+11). The 5-min-before-start
+        // notification is skipped at this offset (lead > window) — that path
+        // has already been validated separately. Slow: ±2 hours, the original
+        // "block now" behavior.
+        let startOffset = useFast ? 2 : -120
+        let endOffset = useFast ? 12 : 120
         let start = ((nowMin + startOffset) % 1440 + 1440) % 1440
         let end = ((nowMin + endOffset) % 1440 + 1440) % 1440
 
         return Template(
             id: "test-now",
-            name: useFast ? "Test (notif demo: T+7 → T+17)" : "Test (now ±2h)",
+            name: useFast ? "Test (T+2 → T+12, 10-min)" : "Test (now ±2h)",
             description: useFast
-                ? "Debug only. Starts in 7 min, runs 10 min. Fires the 5-min-before-start and 1-min-before-end notifications. Pair with Settings → Debug → Fast break timings."
+                ? "Debug only. Starts in 2 min, runs 10 min. Fires the 1-min-before-end notification at T+11. Pair with Settings → Debug → Fast break timings."
                 : "Debug only. 4-hour window centered on the current time so blocks fire immediately.",
             startMinute: start,
             endMinute: end,
