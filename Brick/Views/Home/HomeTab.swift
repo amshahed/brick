@@ -50,13 +50,24 @@ struct HomeTab: View {
                         )
                     }
                     if hasActiveBlock {
+                        if let active = controller.active {
+                            ActiveBreakCard(active: active) {
+                                breakPreselect = nil
+                                showingBreak = true
+                            }
+                        }
                         ActiveBlockCard(
                             oneShots: activeOneShots,
                             now: now,
                             onAddAnother: { showingBlockNow = true },
                             onCancelOneShot: requestCancel
                         )
-                        breakButton
+                        // Hide the "View break" duplicate while the card is
+                        // up; keep the button for the take-a-break /
+                        // cold-start-hint cases when no break is running.
+                        if controller.active == nil {
+                            breakButton
+                        }
                     } else {
                         idleHero
                     }
