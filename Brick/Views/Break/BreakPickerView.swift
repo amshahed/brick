@@ -245,13 +245,6 @@ struct BreakPickerView: View {
         !blockedTokens.isEmpty || !blockedCategoryTokens.isEmpty
     }
 
-    private var remainingMinutes: Int {
-        if case .allowed(let r) = availability {
-            return max(1, Int(r / 60))
-        }
-        return 0
-    }
-
     /// End of the latest active block (schedule or one-shot). A break can
     /// never run past this — the shield drops and there's nothing to take
     /// a break *from*. (#35)
@@ -274,19 +267,22 @@ struct BreakPickerView: View {
         return (scheduleEnds + oneShotEnds).max()
     }
 
-    /// Whole-minute count of how much block time is left before any break
-    /// would be pointless. `floor` because partial minutes aren't usable for
-    /// a `min`-bounded duration stepper.
-    private var blockRemainingMinutes: Int {
-        guard let blockEnd else { return Int.max }
-        let secondsLeft = blockEnd.timeIntervalSince(now)
-        return max(0, Int(secondsLeft / 60))
+    /// Banner state, derived once and consumed by both the renderer and
+    /// the stepper. Pure decision logic lives in BreakBannerPresenter so
+    /// it can be unit-tested without a SwiftUI environment. (#37)
+    private var banner: BreakBanner {
+        BreakBannerPresenter.banner(
+            availability: availability,
+            blockEnd: blockEnd,
+            now: now
+        )
     }
 
     /// Upper bound for the duration stepper. Drives both the `+` button's
     /// disabled state and the clamp in `refresh()`.
     private var maxMinutes: Int {
-        min(remainingMinutes, blockRemainingMinutes)
+        if case .allowed(let m) = banner { return m }
+        return 0
     }
 
     private var canStart: Bool {
@@ -298,8 +294,8 @@ struct BreakPickerView: View {
 
     private func refresh() {
         availability = (try? controller.availability()) ?? .noActiveBlock
-        if durationMinutes > remainingMinutes {
-            durationMinutes = max(1, remainingMinutes)
+        if durationMinutes > maxMinutes {
+            durationMinutes = max(1, maxMinutes)
         }
     }
 
@@ -322,59 +318,45 @@ struct BreakPickerView: View {
 
     @ViewBuilder
     private var availabilityBanner: some View {
-        switch availability {
-        case .allowed(let remaining):
-            if let blockEnd, blockRemainingMinutes < 1 {
-                // Quota is available but the block has < 1 min left, so
-                // no break duration is meaningful. (#35 Q3, allowed edge)
-                banner(
-                    title: "Block ending",
-                    detail: "Block ends in \(formatCountdown(to: blockEnd)) — no break possible.",
-                    systemImage: "clock.badge.xmark"
-                )
-            } else {
-                Label(
-                    "\(min(Int(remaining / 60), blockRemainingMinutes)) min available",
-                    systemImage: "hourglass"
-                )
-                .foregroundStyle(.secondary)
-            }
+        switch banner {
+        case .allowed(let maxMinutes):
+            Label(
+                "\(maxMinutes) min available",
+                systemImage: "hourglass"
+            )
+            .foregroundStyle(.secondary)
         case .coldStart(let endsAt):
-            banner(
+            bannerView(
                 title: "Cold start",
                 detail: "Breaks unlock in \(formatCountdown(to: endsAt)).",
                 systemImage: "snowflake"
             )
         case .quotaExhausted(let availableAt):
-            if let blockEnd, availableAt > blockEnd {
-                // Quota refreshes after the block already ends — there's
-                // no useful break to offer. (#35 Q3)
-                banner(
-                    title: "Block ends before quota refreshes",
-                    detail: "Block ends in \(formatCountdown(to: blockEnd)) — no break possible.",
-                    systemImage: "clock.badge.xmark"
+            VStack(alignment: .leading, spacing: 8) {
+                bannerView(
+                    title: "Break quota used",
+                    detail: "More time available in \(formatCountdown(to: availableAt)).",
+                    systemImage: "gauge.with.dots.needle.0percent"
                 )
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    banner(
-                        title: "Break quota used",
-                        detail: "More time available in \(formatCountdown(to: availableAt)).",
-                        systemImage: "gauge.with.dots.needle.0percent"
-                    )
-                    Button("Override (extends block)", action: onOverride)
-                        .font(.footnote)
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.orange)
-                }
+                Button("Override (extends block)", action: onOverride)
+                    .font(.footnote)
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.orange)
             }
+        case .blockEnding(let blockEnd):
+            bannerView(
+                title: "Block ending",
+                detail: "Block ends in \(formatCountdown(to: blockEnd)) — no break possible.",
+                systemImage: "clock.badge.xmark"
+            )
         case .overageLockout:
-            banner(
+            bannerView(
                 title: "Locked out",
                 detail: "Too much overage this block. No more breaks until it ends.",
                 systemImage: "lock.fill"
             )
         case .noActiveBlock:
-            banner(
+            bannerView(
                 title: "Nothing is blocked",
                 detail: "Start a schedule or block now to take breaks.",
                 systemImage: "checkmark.circle"
@@ -382,7 +364,7 @@ struct BreakPickerView: View {
         }
     }
 
-    private func banner(title: String, detail: String, systemImage: String) -> some View {
+    private func bannerView(title: String, detail: String, systemImage: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: systemImage)
                 .font(.headline)
