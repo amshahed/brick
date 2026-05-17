@@ -58,11 +58,6 @@ struct SettingsTab: View {
                     TravelModeView()
                 }
 
-                Section("Coming soon") {
-                    Label("Notifications", systemImage: "bell.fill")
-                        .foregroundStyle(.secondary)
-                }
-
                 #if DEBUG
                 debugSection
                 #endif
