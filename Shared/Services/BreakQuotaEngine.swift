@@ -103,7 +103,14 @@ struct BreakQuotaEngine {
 
     func endBreak(_ record: BreakRecord, at instant: Date? = nil) throws {
         let now = instant ?? clock.now
-        let endTime = now
+        // Charge quota at minute-ceiling precision: a 1-second break costs
+        // 1 min, 1m 20s costs 2 min, 2m 0s costs 2 min. Capped at the
+        // planned end so timer-jitter past plannedEnd doesn't over-charge.
+        // Decision: refund unused minutes when ending early. (#36)
+        let rawDuration = max(0, now.timeIntervalSince(record.startTime))
+        let roundedDuration = ceil(rawDuration / 60) * 60
+        let rounded = record.startTime.addingTimeInterval(roundedDuration)
+        let endTime = min(rounded, record.plannedEnd)
         record.endTime = endTime
         let duration = endTime.timeIntervalSince(record.startTime)
 

@@ -153,4 +153,49 @@ final class BreakQuotaEngineTests: XCTestCase {
         XCTAssertEqual(session.overageTime, 5 * 60, accuracy: 0.001)
         XCTAssertEqual(session.extensionApplied, 10 * 60, accuracy: 0.001)
     }
+
+    // MARK: - Minute-ceiling rounding on early end (#36)
+
+    func testEndingBreakRoundsUpToNextMinute() throws {
+        // 1m 20s elapsed → 2 min charged.
+        let record = try engine.startBreak(
+            appTokenData: Data([0x01]),
+            plannedDuration: 5 * 60
+        )
+        clock.advance(by: 80)
+        try engine.endBreak(record)
+        XCTAssertEqual(session.totalBreakTime, 2 * 60, accuracy: 0.001)
+    }
+
+    func testEndingBreakOneSecondInChargesOneMinute() throws {
+        // 1 s elapsed → 1 min charged.
+        let record = try engine.startBreak(
+            appTokenData: Data([0x01]),
+            plannedDuration: 3 * 60
+        )
+        clock.advance(by: 1)
+        try engine.endBreak(record)
+        XCTAssertEqual(session.totalBreakTime, 60, accuracy: 0.001)
+    }
+
+    func testEndingBreakAtZeroSecondsChargesZero() throws {
+        // Instant cancel — no quota burned.
+        let record = try engine.startBreak(
+            appTokenData: Data([0x01]),
+            plannedDuration: 3 * 60
+        )
+        try engine.endBreak(record)
+        XCTAssertEqual(session.totalBreakTime, 0, accuracy: 0.001)
+    }
+
+    func testEndingBreakAfterPlannedEndCapsAtPlanned() throws {
+        // Timer-jitter past plannedEnd shouldn't over-charge.
+        let record = try engine.startBreak(
+            appTokenData: Data([0x01]),
+            plannedDuration: 3 * 60
+        )
+        clock.advance(by: 3 * 60 + 30) // 3.5 min, past planned
+        try engine.endBreak(record)
+        XCTAssertEqual(session.totalBreakTime, 3 * 60, accuracy: 0.001)
+    }
 }
