@@ -51,11 +51,23 @@ final class BreakRecord {
 
     var isOpen: Bool { endTime == nil }
 
-    /// Duration of this break that falls inside [windowStart, now].
+    /// Duration of this break charged against the rolling window.
+    ///
+    /// For closed records we count the full [startTime, endTime] span, even
+    /// when `endTime` is in the future. `endBreak()` rounds an early end up
+    /// to the next minute (#36), so a 5-s actual break sets endTime to
+    /// startTime + 60s and charges 60s to the session. Clamping to `now`
+    /// here would have undercounted that charge until the wall-clock caught
+    /// up — letting the user start another break against quota that had
+    /// already been spent.
     func overlap(in windowStart: Date, now: Date) -> TimeInterval {
-        let end = endTime ?? now
         let effectiveStart = max(startTime, windowStart)
-        let effectiveEnd = min(end, now)
+        let effectiveEnd: Date
+        if let endTime {
+            effectiveEnd = endTime
+        } else {
+            effectiveEnd = now
+        }
         return max(0, effectiveEnd.timeIntervalSince(effectiveStart))
     }
 }

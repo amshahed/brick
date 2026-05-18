@@ -23,13 +23,26 @@ struct BreakPickerView: View {
     @State private var durationMinutes: Int = 2
     @State private var availability: BreakAvailability = .noActiveBlock
     @State private var now: Date = .now
-    private let ticker = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
 
     // Duration is now a stepper instead of presets (#18) — kept this slot
     // as a comment so future contributors don't reintroduce the segmented
     // picker without thinking through scaling.
 
     var body: some View {
+        // TimelineView drives the per-second redraw and the availability
+        // re-query — `Timer.publish(...).autoconnect()` stored as a `let`
+        // silently stopped firing once SwiftUI re-created the View struct
+        // (same root cause as ActiveBreakView's #25).
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            content
+                .onChange(of: context.date) { _, newDate in
+                    now = newDate
+                    refresh()
+                }
+        }
+    }
+
+    private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
@@ -117,10 +130,6 @@ struct BreakPickerView: View {
             if let preselectedTokenData, blockedTokens.contains(preselectedTokenData) {
                 selectedAppToken = preselectedTokenData
             }
-        }
-        .onReceive(ticker) { instant in
-            now = instant
-            refresh()
         }
     }
 

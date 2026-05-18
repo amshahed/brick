@@ -198,4 +198,54 @@ final class BreakQuotaEngineTests: XCTestCase {
         try engine.endBreak(record)
         XCTAssertEqual(session.totalBreakTime, 3 * 60, accuracy: 0.001)
     }
+
+    // MARK: - Edge cases (PRD Testing Decisions)
+
+    func testBreakActiveWhenBlockEnds() throws {
+        let record = try engine.startBreak(appTokenData: Data([0x01]))
+        clock.advance(by: 90)
+        session.actualEnd = clock.now
+        try context.save()
+        try engine.endBreak(record)
+        XCTAssertEqual(session.totalBreakTime, 2 * 60, accuracy: 0.001)
+        XCTAssertEqual(try engine.canStartBreak(), .noActiveBlock)
+    }
+
+    func testBreakSpanningWindowBoundary() throws {
+        // 10-min break from T-65m to T-55m: 5 min outside window, 5 min inside.
+        // Complements `testWindowBoundaryPartialOverlap` (which uses a 4-min break)
+        // with a longer break that straddles the trailing edge.
+        try insertClosedBreak(startOffset: -65 * 60, duration: 10 * 60)
+        XCTAssertEqual(try engine.remainingQuota(), (10 - 5) * 60, accuracy: 0.001)
+    }
+
+    func testEarlyEndChargesRoundedMinuteImmediately() throws {
+        // User-reported regression: quota=1m, took 60-s break, ended at 5s.
+        // Minute-ceiling rounds the charge to 60s, but overlap() was clamping
+        // closed-record duration to `now`, so canStartBreak kept reporting
+        // remaining quota until wall-clock caught up to the rounded endTime.
+        let record = try engine.startBreak(
+            appTokenData: Data([0x01]),
+            plannedDuration: 60
+        )
+        clock.advance(by: 5)
+        try engine.endBreak(record)
+        // 60s charged → 9 min remaining of the 10-min cap.
+        XCTAssertEqual(try engine.remainingQuota(), 9 * 60, accuracy: 0.001)
+    }
+
+    func testSimultaneousQuotaExpiryAndColdStartEnd() throws {
+        // Cold-start ends exactly at clock.now, and the 10-min break that
+        // would have filled the quota ended exactly at the window's trailing
+        // edge. Engine should report .allowed at this instant — not
+        // .coldStart (since now == coldEnd, not now < coldEnd) and not
+        // .quotaExhausted (the prior break's overlap with the window is 0).
+        session.actualStart = clock.now.addingTimeInterval(-BreakQuotaEngine.coldStartDuration)
+        session.coldStartEnd = clock.now
+        try insertClosedBreak(startOffset: -70 * 60, duration: 10 * 60)
+        try context.save()
+        guard case .allowed = try engine.canStartBreak() else {
+            return XCTFail("Expected .allowed at the cold-start and window boundary")
+        }
+    }
 }
