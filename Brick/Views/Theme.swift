@@ -409,11 +409,23 @@ struct CountdownRing<Inner: View>: View {
 /// icon), then `content` for any step-specific controls, then a CTA stack
 /// pinned to the bottom. Keeps the visual rhythm consistent across steps
 /// without forcing each step to re-implement the same VStack shape.
+///
+/// Two new knobs unlock the hero variant used on the first-launch flow:
+/// - `heroIconSize` (default 56, hero screens pass 96)
+/// - `alignment` — `.leading` for list / form steps, `.center` for title-card
+///   screens (welcome, permission, slideshow, done)
+/// On first appear the icon plate / hero view scales-and-fades in, gated on
+/// `accessibilityReduceMotion`. The headline gets the same entrance with a
+/// 120 ms delay so the eye reads icon→title in sequence.
 struct OnboardingStep<Content: View>: View {
     let eyebrow: String
     let title: String
     let copy: String?
     var icon: String? = nil
+    var customHero: AnyView? = nil
+    var heroIconSize: CGFloat = 56
+    var alignment: HorizontalAlignment = .leading
+    var titleSize: CGFloat = 30
     var errorText: String? = nil
     var primaryLabel: String? = nil
     var primaryAction: (() -> Void)? = nil
@@ -422,11 +434,19 @@ struct OnboardingStep<Content: View>: View {
     var secondaryAction: (() -> Void)? = nil
     @ViewBuilder var content: () -> Content
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var heroAppeared = false
+    @State private var titleAppeared = false
+
     init(
         eyebrow: String,
         title: String,
         body: String? = nil,
         icon: String? = nil,
+        customHero: AnyView? = nil,
+        heroIconSize: CGFloat = 56,
+        alignment: HorizontalAlignment = .leading,
+        titleSize: CGFloat = 30,
         errorText: String? = nil,
         primaryLabel: String? = nil,
         primaryAction: (() -> Void)? = nil,
@@ -439,6 +459,10 @@ struct OnboardingStep<Content: View>: View {
         self.title = title
         self.copy = body
         self.icon = icon
+        self.customHero = customHero
+        self.heroIconSize = heroIconSize
+        self.alignment = alignment
+        self.titleSize = titleSize
         self.errorText = errorText
         self.primaryLabel = primaryLabel
         self.primaryAction = primaryAction
@@ -448,41 +472,53 @@ struct OnboardingStep<Content: View>: View {
         self.content = content
     }
 
+    private var textAlignment: TextAlignment {
+        alignment == .center ? .center : .leading
+    }
+
+    private var frameAlignment: Alignment {
+        alignment == .center ? .center : .leading
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: Theme.Space.xl) {
-                    if let icon {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Theme.accentMuted)
-                                .frame(width: 56, height: 56)
-                            Image(systemName: icon)
-                                .font(.system(size: 24, weight: .semibold))
-                                .foregroundStyle(Theme.accent)
-                        }
+                VStack(alignment: alignment, spacing: Theme.Space.xl) {
+                    if let customHero {
+                        customHero
+                            .scaleEffect(heroAppeared ? 1 : 0.88)
+                            .opacity(heroAppeared ? 1 : 0)
+                    } else if let icon {
+                        IconPlate(symbol: icon, size: heroIconSize)
+                            .scaleEffect(heroAppeared ? 1 : 0.85)
+                            .opacity(heroAppeared ? 1 : 0)
                     }
-                    VStack(alignment: .leading, spacing: Theme.Space.sm) {
+                    VStack(alignment: alignment, spacing: Theme.Space.sm) {
                         SectionEyebrow(text: eyebrow)
                         Text(title)
-                            .font(Theme.display(30, weight: .semibold))
+                            .font(Theme.display(titleSize, weight: .semibold))
                             .foregroundStyle(.primary)
                             .lineSpacing(-2)
+                            .multilineTextAlignment(textAlignment)
                         if let copy {
                             Text(copy)
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .padding(.top, Theme.Space.xs)
+                                .multilineTextAlignment(textAlignment)
                         }
                     }
+                    .opacity(titleAppeared ? 1 : 0)
+                    .offset(y: titleAppeared ? 0 : 8)
                     content()
                     if let errorText {
                         Text(errorText)
                             .font(.footnote)
                             .foregroundStyle(.red)
+                            .multilineTextAlignment(textAlignment)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: frameAlignment)
                 .padding(.horizontal, Theme.Space.lg)
                 .padding(.top, Theme.Space.lg)
             }
@@ -506,5 +542,113 @@ struct OnboardingStep<Content: View>: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Theme.canvas.ignoresSafeArea())
+        .onAppear(perform: playEntrance)
+    }
+
+    private func playEntrance() {
+        guard !reduceMotion else {
+            heroAppeared = true
+            titleAppeared = true
+            return
+        }
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+            heroAppeared = true
+        }
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.82).delay(0.12)) {
+            titleAppeared = true
+        }
+    }
+}
+
+// MARK: - Brick hero logo
+
+/// `AppIconMark` clipped to a continuous-radius square with a soft drop
+/// shadow, sized large for the welcome / done screens. Same primitive as
+/// the launcher icon, so the brand is literally the same mark wherever
+/// it appears.
+struct BrickHeroLogo: View {
+    var size: CGFloat = 144
+
+    var body: some View {
+        AppIconMark(size: size)
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: size * 0.225, style: .continuous))
+            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
+    }
+}
+
+// MARK: - Passcode dots field
+
+/// Six-dot passcode field. A real `TextField` sits behind the dots (zero
+/// opacity, custom keyboard, takes focus on tap). Dots fill in clay as
+/// the user types. When the parent flips `errorTrigger`, the row shakes
+/// laterally for ~250 ms — same UX cue the system passcode field uses
+/// for a bad entry.
+struct PasscodeDotsField: View {
+    @Binding var value: String
+    var errorTrigger: Int
+    var maxLength: Int = 6
+
+    @FocusState private var focused: Bool
+    @State private var shake: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            // Hidden real input. `.opacity(0)` keeps it accessible and
+            // hit-testable; `.frame(height: 1)` collapses its visual
+            // footprint without removing it from the responder chain.
+            TextField("", text: $value)
+                .keyboardType(.numberPad)
+                .textContentType(.oneTimeCode)
+                .focused($focused)
+                .opacity(0.001)
+                .frame(height: 1)
+                .onChange(of: value) { _, new in
+                    let sanitized = String(new.filter { $0.isNumber }.prefix(maxLength))
+                    if sanitized != new { value = sanitized }
+                }
+            HStack(spacing: Theme.Space.md) {
+                ForEach(0..<maxLength, id: \.self) { i in
+                    Circle()
+                        .fill(i < value.count ? Theme.accent : Color.primary.opacity(0.08))
+                        .frame(width: 16, height: 16)
+                        .animation(.easeOut(duration: 0.18), value: value.count)
+                }
+            }
+            .allowsHitTesting(false)
+        }
+        .padding(.vertical, Theme.Space.lg)
+        .padding(.horizontal, Theme.Space.xl)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.Radius.button, style: .continuous)
+                .fill(Color.primary.opacity(0.04))
+        )
+        .modifier(ShakeEffect(animatableData: shake))
+        .contentShape(Rectangle())
+        .onTapGesture { focused = true }
+        .onAppear { focused = true }
+        .onChange(of: errorTrigger) { _, _ in
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 0.32)) { shake += 1 }
+        }
+    }
+}
+
+/// Lateral wobble used by `PasscodeDotsField` for incorrect-entry feedback.
+/// 3 cycles of a sine wave, ~8pt amplitude. `animatableData` is the cycle
+/// count — increment to play, SwiftUI tweens the rest.
+struct ShakeEffect: GeometryEffect {
+    var amount: CGFloat = 8
+    var shakesPerUnit: CGFloat = 3
+    var animatableData: CGFloat
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        ProjectionTransform(
+            CGAffineTransform(
+                translationX: amount * sin(animatableData * .pi * shakesPerUnit),
+                y: 0
+            )
+        )
     }
 }

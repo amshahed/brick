@@ -16,6 +16,7 @@ struct OnboardingView: View {
 
     @State private var step: Step = .welcome
     @State private var history: [Step] = []
+    @State private var direction: NavDirection = .forward
     @State private var authRequested = false
     @State private var authError: String?
     @State private var screenTimeSlide: Int = 0
@@ -29,9 +30,13 @@ struct OnboardingView: View {
     @State private var finishError: String?
     @State private var finishAttempts: Int = 0
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     enum Step: Int {
         case welcome, auth, passcode, screenTimePasscode, templates, apps, done
     }
+
+    enum NavDirection { case forward, backward }
 
     struct DateRange: Equatable {
         var start: Date
@@ -40,17 +45,22 @@ struct OnboardingView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                switch step {
-                case .welcome: welcomeStep
-                case .auth: authStep
-                case .passcode: passcodeStep
-                case .screenTimePasscode: screenTimePasscodeStep
-                case .templates: templateStep
-                case .apps: appsStep
-                case .done: doneStep
+            ZStack {
+                Group {
+                    switch step {
+                    case .welcome: welcomeStep
+                    case .auth: authStep
+                    case .passcode: passcodeStep
+                    case .screenTimePasscode: screenTimePasscodeStep
+                    case .templates: templateStep
+                    case .apps: appsStep
+                    case .done: doneStep
+                    }
                 }
+                .id(step)
+                .transition(slideTransition)
             }
+            .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.42, dampingFraction: 0.86), value: step)
             .padding()
             .interactiveDismissDisabled()
             .toolbar { toolbarContent }
@@ -99,13 +109,30 @@ struct OnboardingView: View {
     // MARK: - Step transitions (with history tracking)
 
     private func go(to next: Step) {
+        direction = .forward
         history.append(step)
         step = next
     }
 
     private func goBack() {
+        direction = .backward
         guard let previous = history.popLast() else { return }
         step = previous
+    }
+
+    /// Direction-aware slide. Forward moves the new step in from the
+    /// trailing edge; backward mirrors it. Reduce-motion users get a flat
+    /// crossfade.
+    private var slideTransition: AnyTransition {
+        if reduceMotion {
+            return .opacity
+        }
+        let inEdge: Edge = direction == .forward ? .trailing : .leading
+        let outEdge: Edge = direction == .forward ? .leading : .trailing
+        return .asymmetric(
+            insertion: .move(edge: inEdge).combined(with: .opacity),
+            removal: .move(edge: outEdge).combined(with: .opacity)
+        )
     }
 
     // MARK: - Steps
@@ -115,7 +142,9 @@ struct OnboardingView: View {
             eyebrow: "Welcome",
             title: "Block apps\nwith real commitment.",
             body: "Brick is a focus tool that adds friction where other blockers fold. A passcode prevents impulse breaks. A structured budget keeps overage honest.",
-            icon: "hand.raised.slash.fill",
+            customHero: AnyView(BrickHeroLogo(size: 144)),
+            alignment: .center,
+            titleSize: 34,
             primaryLabel: "Get started",
             primaryAction: {
                 if AuthorizationCenter.shared.authorizationStatus == .approved {
@@ -133,6 +162,9 @@ struct OnboardingView: View {
             title: "Screen Time access.",
             body: "Brick uses Apple's Screen Time framework to shield apps. Tap Grant permission and then Continue on the system dialog.",
             icon: "lock.shield",
+            heroIconSize: 96,
+            alignment: .center,
+            titleSize: 32,
             errorText: authError,
             primaryLabel: authPrimaryTitle,
             primaryAction: {
@@ -171,14 +203,21 @@ struct OnboardingView: View {
 
     private var screenTimePasscodeStep: some View {
         VStack(spacing: 0) {
+            slideshowProgress
+                .padding(.horizontal, Theme.Space.lg)
+                .padding(.top, Theme.Space.md)
+
             TabView(selection: $screenTimeSlide) {
                 stpIntroSlide.tag(0)
                 stpPasscodeSlide.tag(1)
                 stpDeletionSlide.tag(2)
                 stpConfirmSlide.tag(3)
             }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .indexViewStyle(.page(backgroundDisplayMode: .always))
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            // Re-key on the slide index so each slide is a fresh view —
+            // the icon entrance animation in `OnboardingStep` re-fires
+            // when the user swipes.
+            .id(screenTimeSlide)
 
             Button("Skip for now") { go(to: .templates) }
                 .buttonStyle(.brickSecondary)
@@ -188,21 +227,39 @@ struct OnboardingView: View {
         .background(Theme.canvas.ignoresSafeArea())
     }
 
+    private var slideshowProgress: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<4, id: \.self) { i in
+                Capsule()
+                    .fill(i == screenTimeSlide ? Theme.accent : Color.primary.opacity(0.08))
+                    .frame(width: i == screenTimeSlide ? 22 : 8, height: 6)
+                    .animation(.spring(response: 0.32, dampingFraction: 0.85), value: screenTimeSlide)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
     private var stpIntroSlide: some View {
         OnboardingStep(
-            eyebrow: "Lock down · 1 of 4",
+            eyebrow: "1 of 4",
             title: "Two iOS steps\nblock uninstall.",
             body: "Brick alone can't stop you from deleting it during a block. iOS has the lock — these next slides walk you through enabling it.",
-            icon: "lock.iphone"
+            icon: "lock.iphone",
+            heroIconSize: 96,
+            alignment: .center,
+            titleSize: 30
         ) { EmptyView() }
     }
 
     private var stpPasscodeSlide: some View {
         OnboardingStep(
-            eyebrow: "Lock down · 2 of 4",
-            title: "Set a Screen Time passcode.",
+            eyebrow: "2 of 4",
+            title: "Set a Screen Time\npasscode.",
             body: "In Settings → Screen Time → Lock Screen Time Settings. Pick a passcode you don't easily reach for.",
             icon: "key.fill",
+            heroIconSize: 96,
+            alignment: .center,
+            titleSize: 30,
             primaryLabel: "Open Settings",
             primaryAction: openSettings
         ) { EmptyView() }
@@ -210,10 +267,13 @@ struct OnboardingView: View {
 
     private var stpDeletionSlide: some View {
         OnboardingStep(
-            eyebrow: "Lock down · 3 of 4",
-            title: "Disallow app deletion.",
+            eyebrow: "3 of 4",
+            title: "Disallow\napp deletion.",
             body: "Settings → Screen Time → Content & Privacy Restrictions → On → iTunes & App Store Purchases → Deleting Apps → Don't Allow. This is iOS-wide, not just Brick — it's the only way iOS lets a third-party app be uninstall-protected.",
             icon: "trash.slash.fill",
+            heroIconSize: 96,
+            alignment: .center,
+            titleSize: 30,
             primaryLabel: "Open Settings",
             primaryAction: openSettings
         ) { EmptyView() }
@@ -221,10 +281,13 @@ struct OnboardingView: View {
 
     private var stpConfirmSlide: some View {
         OnboardingStep(
-            eyebrow: "Lock down · 4 of 4",
+            eyebrow: "4 of 4",
             title: "All set?",
             body: "Once you've done both steps in Settings, continue. You can revisit this later from Settings if you want to verify.",
             icon: "checkmark.shield.fill",
+            heroIconSize: 96,
+            alignment: .center,
+            titleSize: 32,
             primaryLabel: "I've finished both steps",
             primaryAction: { go(to: .templates) }
         ) { EmptyView() }
@@ -307,6 +370,9 @@ struct OnboardingView: View {
             title: "You're ready.",
             body: "Brick is active. Start a one-off block now from the Home tab or let your schedules kick in.",
             icon: "checkmark.seal.fill",
+            heroIconSize: 96,
+            alignment: .center,
+            titleSize: 36,
             errorText: finishError,
             primaryLabel: finishError == nil ? "Open Brick" : "Continue anyway",
             primaryAction: { finish() }
