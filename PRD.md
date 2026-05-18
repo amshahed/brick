@@ -42,7 +42,7 @@ The app is fully local (no backend), targets iOS 17+, and uses SwiftData for per
 18. As a user, I want overage time to extend my block's end by 2x the overage duration (e.g., 5 min overage = +10 min extension), so that there is a real cost to exceeding the quota.
 19. As a user, I want a hard lockout after 15 minutes of overage in a single block, so that there is an absolute ceiling on how much I can override the system.
 20. As a user, I want to see a shield overlay when I open a blocked app, so that the block is clearly enforced.
-21. As a user, I want the shield overlay to offer a "Take a break" option that routes to the main app, so that the break flow is discoverable.
+21. As a user, I want a clear handoff from the shield to Brick when I open a blocked app, so that I know how to start a break. Implementation: the shield shows only iOS's default Close button — tapping it dismisses the shield and posts a local "Open Brick to take your break" notification; tapping that notification opens Brick at the break flow. (Breaks are not initiated from inside the shield extension.)
 22. As a user, I want to optionally pair Brick with a companion iOS Focus mode (containing my allowed contacts), so that important people can call me during a block.
 23. As a user, I want Focus to be optional and not gate any blocking functionality, so that I can use Brick as a pure shield if I prefer.
 24. As a user, I want Brick to walk me through Focus setup honestly — explaining that iOS controls Focus activation via either a Focus Schedule or a Shortcuts Personal Automation — so that I can pick the path that fits my schedules.
@@ -55,7 +55,7 @@ The app is fully local (no backend), targets iOS 17+, and uses SwiftData for per
 31. As a user, I want to still be able to edit future schedules, other blocklists, and view stats during an active block, so that lockdown is minimal and non-frustrating.
 32. As a user, I want to activate travel mode with a manual date range or a quick toggle, so that all schedules are suspended while I'm traveling.
 33. As a user, I want dated travel mode to automatically resume schedules when the travel period ends, so that I don't forget to re-enable blocking.
-34. As a user, I want toggle-based travel mode to nudge me daily and escalate after 7 days, so that I don't accidentally leave it on forever.
+34. As a user, I want toggle-based travel mode to nudge me daily at 9am, plus a one-time elevated alert at the 7-day mark, so that I don't accidentally leave it on forever.
 35. As a user, I want a visible banner in the main UI when travel mode is active, so that I'm always aware my blocks are suspended.
 36. As a user, I want to see blocked time today and this week on the home screen, so that I have a quick sense of how much focus time I've accumulated.
 37. As a user, I want to see my break quota usage (X/10 min) on the home screen, so that I know how much break time I have left.
