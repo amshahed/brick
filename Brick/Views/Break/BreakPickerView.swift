@@ -42,7 +42,42 @@ struct BreakPickerView: View {
         }
     }
 
+    /// Splits the layout in two: when a break is actually available the
+    /// existing left-aligned picker stays unchanged; for every other state
+    /// (cold-start, quota used, lockout, block ending, no active block)
+    /// the screen becomes a centered hero with an icon plate, a countdown
+    /// ring where applicable, and a one-sentence rationale — the picker
+    /// rows are hidden in those cases so the page was just a tiny banner
+    /// floating in a sea of whitespace.
     private var content: some View {
+        Group {
+            if case .allowed = banner {
+                allowedContent
+            } else {
+                heroContent
+            }
+        }
+        .background(Theme.canvas.ignoresSafeArea())
+        .navigationTitle("Take a break")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel", action: onCancel)
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Start") { startIfPossible() }
+                    .disabled(!canStart)
+            }
+        }
+        .onAppear {
+            refresh()
+            if let preselectedTokenData, blockedTokens.contains(preselectedTokenData) {
+                selectedAppToken = preselectedTokenData
+            }
+        }
+    }
+
+    private var allowedContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Space.xl) {
                 VStack(alignment: .leading, spacing: Theme.Space.sm) {
@@ -54,7 +89,7 @@ struct BreakPickerView: View {
 
                 availabilityBanner
 
-                if case .allowed = availability, hasAnyTarget {
+                if hasAnyTarget {
                     if !blockedTokens.isEmpty {
                         VStack(alignment: .leading, spacing: Theme.Space.sm) {
                             SectionEyebrow(text: "Pick one app")
@@ -98,7 +133,7 @@ struct BreakPickerView: View {
                     }
 
                     durationStepper
-                } else if case .allowed = availability {
+                } else {
                     VStack(alignment: .leading, spacing: Theme.Space.sm) {
                         SectionEyebrow(text: "Nothing to break from")
                         Text("Your active blocklist has no apps or categories that can be unshielded.")
@@ -113,23 +148,122 @@ struct BreakPickerView: View {
             .padding(.bottom, Theme.Space.xxl)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(Theme.canvas.ignoresSafeArea())
-        .navigationTitle("Take a break")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel", action: onCancel)
+    }
+
+    private var heroContent: some View {
+        ScrollView {
+            VStack(alignment: .center, spacing: Theme.Space.xl) {
+                IconPlate(symbol: heroSymbol, size: 72)
+                    .padding(.top, Theme.Space.xl)
+
+                heroCountdownRing
+
+                VStack(alignment: .center, spacing: Theme.Space.sm) {
+                    Text(heroEyebrow.uppercased())
+                        .font(Theme.label)
+                        .tracking(0.8)
+                        .foregroundStyle(.secondary)
+                    Text(heroHeadline)
+                        .font(Theme.display(28, weight: .semibold))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(-2)
+                    Text(heroBody)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, Theme.Space.xs)
+                }
+                .frame(maxWidth: 360)
+
+                if case .quotaExhausted = banner {
+                    Button("Override (extends block)", action: onOverride)
+                        .buttonStyle(.brickSecondary)
+                        .padding(.top, Theme.Space.sm)
+                        .padding(.horizontal, Theme.Space.lg)
+                }
             }
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Start") { startIfPossible() }
-                    .disabled(!canStart)
+            .padding(.horizontal, Theme.Space.lg)
+            .padding(.bottom, Theme.Space.xxl)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var heroCountdownRing: some View {
+        switch banner {
+        case .coldStart(let endsAt):
+            ringWithCenter(
+                start: endsAt.addingTimeInterval(-BreakQuotaEngine.coldStartDuration),
+                end: endsAt,
+                caption: "Until breaks"
+            )
+        case .quotaExhausted(let availableAt):
+            ringWithCenter(
+                start: availableAt.addingTimeInterval(-BreakQuotaEngine.windowDuration),
+                end: availableAt,
+                caption: "Until refresh"
+            )
+        case .blockEnding, .overageLockout, .noActiveBlock, .allowed:
+            EmptyView()
+        }
+    }
+
+    private func ringWithCenter(start: Date, end: Date, caption: String) -> some View {
+        CountdownRing(start: start, end: end, lineWidth: 10) {
+            VStack(spacing: 2) {
+                Text(formatCountdown(to: end))
+                    .font(Theme.statNumber(36))
+                    .foregroundStyle(.primary)
+                Text(caption.uppercased())
+                    .font(Theme.label)
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
             }
         }
-        .onAppear {
-            refresh()
-            if let preselectedTokenData, blockedTokens.contains(preselectedTokenData) {
-                selectedAppToken = preselectedTokenData
-            }
+        .frame(width: 200, height: 200)
+    }
+
+    private var heroSymbol: String {
+        switch banner {
+        case .coldStart: return "snowflake"
+        case .quotaExhausted: return "gauge.with.dots.needle.0percent"
+        case .blockEnding: return "clock.badge.xmark"
+        case .overageLockout: return "lock.fill"
+        case .noActiveBlock: return "checkmark.circle"
+        case .allowed: return "hourglass"
+        }
+    }
+
+    private var heroEyebrow: String {
+        switch banner {
+        case .coldStart: return "Cold start"
+        case .quotaExhausted: return "Quota used"
+        case .blockEnding: return "Block ending"
+        case .overageLockout: return "Locked out"
+        case .noActiveBlock: return "All clear"
+        case .allowed: return "Break"
+        }
+    }
+
+    private var heroHeadline: String {
+        switch banner {
+        case .coldStart: return "Settling in."
+        case .quotaExhausted: return "Out of break\nfor now."
+        case .blockEnding: return "Almost done."
+        case .overageLockout: return "No more breaks\nthis block."
+        case .noActiveBlock: return "Nothing\nis blocked."
+        case .allowed: return ""
+        }
+    }
+
+    private var heroBody: String {
+        switch banner {
+        case .coldStart: return "The first 25 minutes of a block are committed time. Breaks unlock automatically when the cold-start ends."
+        case .quotaExhausted: return "You've used your 10 minutes of break in the last hour. More opens up as older breaks decay out of the window."
+        case .blockEnding: return "Not enough block time left for a meaningful break."
+        case .overageLockout: return "Too much overage already this block — locked out until it ends."
+        case .noActiveBlock: return "Start a schedule or block now to take breaks."
+        case .allowed: return ""
         }
     }
 

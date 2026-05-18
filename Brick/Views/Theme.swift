@@ -257,6 +257,65 @@ struct BrickEmptyState: View {
     }
 }
 
+// MARK: - Icon plate
+
+/// Clay-tinted rounded square holding an SF Symbol. Replaces the ad-hoc
+/// `ZStack { RoundedRectangle + Image }` pattern that was duplicated across
+/// onboarding, blocklist rows, travel banner, and the focus nudge card.
+struct IconPlate: View {
+    let symbol: String
+    var size: CGFloat = 56
+    var symbolSize: CGFloat? = nil
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: size * 0.32, style: .continuous)
+            .fill(Theme.accentMuted)
+            .frame(width: size, height: size)
+            .overlay(
+                Image(systemName: symbol)
+                    .font(.system(size: symbolSize ?? size * 0.42, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+            )
+    }
+}
+
+// MARK: - Countdown ring
+
+/// Circular progress ring that drains from full to empty over [start, end].
+/// Driven by `TimelineView(.periodic)` so it ticks reliably across SwiftUI
+/// rebuilds (same rationale as #25). Respects `reduceMotion` by skipping the
+/// implicit fraction animation.
+struct CountdownRing<Inner: View>: View {
+    let start: Date
+    let end: Date
+    var lineWidth: CGFloat = 8
+    var trackOpacity: Double = 0.08
+    @ViewBuilder var inner: () -> Inner
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.periodic(from: start, by: 1)) { context in
+            let remaining = max(0, end.timeIntervalSince(context.date))
+            let total = max(1, end.timeIntervalSince(start))
+            let fraction = min(1, max(0, remaining / total))
+            ZStack {
+                Circle()
+                    .stroke(Color.primary.opacity(trackOpacity), lineWidth: lineWidth)
+                Circle()
+                    .trim(from: 0, to: fraction)
+                    .stroke(
+                        Theme.accent,
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .animation(reduceMotion ? nil : .linear(duration: 0.9), value: fraction)
+                inner()
+            }
+        }
+    }
+}
+
 // MARK: - Onboarding step
 
 /// Shared layout for the multi-step onboarding flow. Editorial top-aligned
