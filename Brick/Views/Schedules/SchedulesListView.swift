@@ -13,7 +13,32 @@ struct SchedulesListView: View {
     @State private var showDeleteGate = false
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            BrickHeader(
+                title: "Schedules",
+                subtitle: schedules.isEmpty ? nil : countSubtitle,
+                leading: { IconPlate(symbol: "calendar", size: 44) },
+                trailing: {
+                    Menu {
+                        if !blocklists.isEmpty {
+                            Button { showingNew = true } label: {
+                                Label("New schedule", systemImage: "plus")
+                            }
+                        }
+                        Button { showingTemplatePicker = true } label: {
+                            Label("Start from template", systemImage: "sparkles")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(Theme.accentMuted))
+                    }
+                    .accessibilityLabel("Add schedule")
+                }
+            )
+
             if blocklists.isEmpty {
                 BrickEmptyState(
                     eyebrow: "Schedules",
@@ -75,23 +100,7 @@ struct SchedulesListView: View {
             }
         }
         .background(Theme.canvas.ignoresSafeArea())
-        .navigationTitle("Schedules")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    if !blocklists.isEmpty {
-                        Button { showingNew = true } label: {
-                            Label("New schedule", systemImage: "plus")
-                        }
-                    }
-                    Button { showingTemplatePicker = true } label: {
-                        Label("Start from template", systemImage: "sparkles")
-                    }
-                } label: {
-                    Label("Add", systemImage: "plus")
-                }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(for: Schedule.self) { schedule in
             ScheduleEditorView(mode: .edit(schedule))
         }
@@ -123,6 +132,13 @@ struct SchedulesListView: View {
             }
             pendingDelete = nil
         }
+    }
+
+    private var countSubtitle: String {
+        let enabled = schedules.filter(\.enabled).count
+        let total = schedules.count
+        if enabled == total { return total == 1 ? "1 active" : "\(total) active" }
+        return "\(enabled) active · \(total) total"
     }
 
     private func requestDelete(schedule: Schedule) {

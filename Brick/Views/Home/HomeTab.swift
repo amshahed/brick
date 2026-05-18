@@ -34,70 +34,85 @@ struct HomeTab: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: Theme.Space.xl) {
-                    if let travel = activeTravel {
-                        TravelBanner(
-                            period: travel,
-                            now: now,
-                            onDisable: {
-                                try? TravelPeriodStore(context: context).end(travel)
-                            },
-                            onTapDetails: { showTravelMode = true }
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: Theme.Space.xl) {
+                        BrickHeader(
+                            title: "Brick",
+                            subtitle: homeSubtitle,
+                            leading: {
+                                AppIconMark(size: 44)
+                                    .clipShape(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    )
+                            }
                         )
-                    }
-                    if shouldShowFocusNudge {
-                        FocusNudgeCard(
-                            onSetUp: { showFocusOnboarding = true },
-                            onDismiss: { nudgeDismissed = true }
-                        )
-                    }
-                    if let active = controller.active {
-                        // Break running: the break row owns the home screen;
-                        // block rows are hidden so attention is on the
-                        // remaining break time. (#35)
-                        ActiveBreakCard(active: active) {
-                            breakPreselect = nil
-                            showingBreak = true
-                        }
-                    } else if !openSessions.isEmpty {
-                        // One progress row per active block (schedule or
-                        // one-shot). Tapping any row opens the break sheet,
-                        // which surfaces cold-start / quota / no-break-
-                        // possible state inline — so there's no separate
-                        // "Take a break" button on home.
-                        ForEach(openSessions) { session in
-                            ActiveBlockTimerRow(
-                                name: blockName(for: session),
-                                actualStart: session.actualStart,
-                                scheduledEnd: session.effectiveEnd
-                                    ?? session.scheduledEnd
-                                    ?? now.addingTimeInterval(60),
-                                subtitle: blockSubtitle(for: session),
-                                onCancel: cancelHandler(for: session),
-                                onTap: {
-                                    breakPreselect = nil
-                                    showingBreak = true
-                                }
+                        .padding(.horizontal, -Theme.Space.lg) // header owns its own padding
+                        if let travel = activeTravel {
+                            TravelBanner(
+                                period: travel,
+                                now: now,
+                                onDisable: {
+                                    try? TravelPeriodStore(context: context).end(travel)
+                                },
+                                onTapDetails: { showTravelMode = true }
                             )
                         }
-                        addAnotherBlockButton
-                    } else {
-                        idleHero
+                        if shouldShowFocusNudge {
+                            FocusNudgeCard(
+                                onSetUp: { showFocusOnboarding = true },
+                                onDismiss: { nudgeDismissed = true }
+                            )
+                        }
+                        StatsCard(
+                            today: todayBlocked,
+                            week: weekBlocked,
+                            quotaUsed: quotaUsed,
+                            streak: streak
+                        )
+
+                        Spacer(minLength: Theme.Space.lg)
+
+                        // Dynamic content lives at the bottom — just above
+                        // the tab bar — so the user's eye ends on the
+                        // current state (active break / running block /
+                        // idle CTA) rather than on static stats.
+                        if let active = controller.active {
+                            ActiveBreakCard(active: active) {
+                                breakPreselect = nil
+                                showingBreak = true
+                            }
+                        } else if !openSessions.isEmpty {
+                            VStack(spacing: Theme.Space.md) {
+                                ForEach(openSessions) { session in
+                                    ActiveBlockTimerRow(
+                                        name: blockName(for: session),
+                                        actualStart: session.actualStart,
+                                        scheduledEnd: session.effectiveEnd
+                                            ?? session.scheduledEnd
+                                            ?? now.addingTimeInterval(60),
+                                        subtitle: blockSubtitle(for: session),
+                                        onCancel: cancelHandler(for: session),
+                                        onTap: {
+                                            breakPreselect = nil
+                                            showingBreak = true
+                                        }
+                                    )
+                                }
+                                addAnotherBlockButton
+                            }
+                        } else {
+                            idleHero
+                        }
                     }
-                    StatsCard(
-                        today: todayBlocked,
-                        week: weekBlocked,
-                        quotaUsed: quotaUsed,
-                        streak: streak
-                    )
+                    .padding(.horizontal, Theme.Space.lg)
+                    .padding(.top, Theme.Space.sm)
+                    .padding(.bottom, Theme.Space.lg)
+                    .frame(minHeight: geometry.size.height, alignment: .top)
                 }
-                .padding(.horizontal, Theme.Space.lg)
-                .padding(.top, Theme.Space.md)
-                .padding(.bottom, Theme.Space.xxl)
             }
             .background(Theme.canvas.ignoresSafeArea())
-            .navigationTitle("Brick")
+            .toolbar(.hidden, for: .navigationBar)
             .task {
                 loadSettings()
                 refreshStats(at: now)
@@ -152,6 +167,18 @@ struct HomeTab: View {
 
     private func loadSettings() {
         settings = try? AppSettingsStore(context: context).loadOrCreate()
+    }
+
+    /// Header subtitle — reflects the user's current state. Streak takes
+    /// precedence (it's the gamified payoff); falls back to active-state
+    /// hints; finally the all-clear copy.
+    private var homeSubtitle: String {
+        if streak > 0 {
+            return streak == 1 ? "1-day streak" : "\(streak)-day streak"
+        }
+        if controller.active != nil { return "On a break" }
+        if !openSessions.isEmpty { return "Block active" }
+        return "All clear"
     }
 
     private var shouldShowFocusNudge: Bool {

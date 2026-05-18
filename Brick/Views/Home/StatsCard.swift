@@ -1,35 +1,33 @@
 import SwiftUI
 
+/// 2×2 grid of stat tiles. Each tile is a `StatTile` (icon plate + value
+/// + small-caps label) wrapped in `cardSurface()`, so the four cells read
+/// as a coherent band on the home screen.
 struct StatsCard: View {
     let today: TimeInterval
     let week: TimeInterval
     let quotaUsed: TimeInterval
     let streak: Int
 
+    private let columns = [
+        GridItem(.flexible(), spacing: Theme.Space.sm),
+        GridItem(.flexible(), spacing: Theme.Space.sm)
+    ]
+
     var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Space.lg) {
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
             SectionEyebrow(text: "Your week")
-
-            // Two-column grid of large monospaced stats. The hairline
-            // dividers between cells keep the rhythm without adding the
-            // weight of full card-on-card chrome.
-            HStack(alignment: .top, spacing: 0) {
-                StatBlock(value: formatDuration(today), label: "Today", numberSize: 30)
-                Divider().frame(height: 56).overlay(Theme.hairline)
-                StatBlock(value: formatDuration(week), label: "This week", numberSize: 30)
+            LazyVGrid(columns: columns, spacing: Theme.Space.sm) {
+                StatTile(symbol: "hourglass", value: formatDuration(today), label: "Today")
+                StatTile(symbol: "calendar", value: formatDuration(week), label: "This week")
+                StatTile(
+                    symbol: "gauge.with.dots.needle.50percent",
+                    value: formatQuota(quotaUsed),
+                    label: "Break quota"
+                )
+                StatTile(symbol: "flame.fill", value: formatStreak(streak), label: "Streak")
             }
-            .frame(maxWidth: .infinity)
-
-            Divider().overlay(Theme.hairline)
-
-            HStack(alignment: .top, spacing: 0) {
-                StatBlock(value: formatQuota(quotaUsed), label: "Break quota", numberSize: 22)
-                Divider().frame(height: 44).overlay(Theme.hairline)
-                StatBlock(value: formatStreak(streak), label: "Streak", numberSize: 22)
-            }
-            .frame(maxWidth: .infinity)
         }
-        .cardSurface()
     }
 
     private func formatDuration(_ seconds: TimeInterval) -> String {

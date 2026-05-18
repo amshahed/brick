@@ -11,6 +11,12 @@ struct BrickApp: App {
     @StateObject private var router: AppRouter
 
     init() {
+        // Opt out of the iOS 26 floating-pill "Liquid Glass" tab bar —
+        // we want a flat warm-cream surface with the clay accent on
+        // selection, coherent with the rest of the app. Configured once
+        // at app launch so every UITabBar instance picks it up.
+        Self.configureTabBarAppearance()
+
         // UI-test reset MUST run before the model container is touched —
         // Self.sharedModelContainer is a static initializer and opening the
         // store creates the SQLite file we want to clean.
@@ -61,6 +67,32 @@ struct BrickApp: App {
         Self.applyUITestPostContainerFlags(
             context: Self.sharedModelContainer.mainContext
         )
+    }
+
+    /// Tab-bar visual config. Opaque warm-cream background with the clay
+    /// accent on the selected item; same appearance on standard and
+    /// scroll-edge so the bar never flips to translucent glass when a
+    /// long scroll meets the bottom edge.
+    private static func configureTabBarAppearance() {
+        let appearance = UITabBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = UIColor(Theme.canvas)
+
+        let item = UITabBarItemAppearance()
+        item.normal.iconColor = .secondaryLabel
+        item.normal.titleTextAttributes = [
+            .foregroundColor: UIColor.secondaryLabel
+        ]
+        item.selected.iconColor = UIColor(Theme.accent)
+        item.selected.titleTextAttributes = [
+            .foregroundColor: UIColor(Theme.accent)
+        ]
+        appearance.stackedLayoutAppearance = item
+        appearance.inlineLayoutAppearance = item
+        appearance.compactInlineLayoutAppearance = item
+
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
     }
 
     /// Pre-container UI-test flags. Runs before SQLite is opened.

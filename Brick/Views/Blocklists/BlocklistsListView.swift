@@ -16,7 +16,23 @@ struct BlocklistsListView: View {
     }
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            BrickHeader(
+                title: "Blocklists",
+                subtitle: blocklists.isEmpty ? nil : countSubtitle,
+                leading: { IconPlate(symbol: "square.stack.fill", size: 44) },
+                trailing: {
+                    Button { showingNewEditor = true } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(Theme.accentMuted))
+                    }
+                    .accessibilityLabel("New blocklist")
+                }
+            )
+
             if blocklists.isEmpty {
                 BrickEmptyState(
                     eyebrow: "Blocklists",
@@ -56,14 +72,7 @@ struct BlocklistsListView: View {
             }
         }
         .background(Theme.canvas.ignoresSafeArea())
-        .navigationTitle("Blocklists")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { showingNewEditor = true } label: {
-                    Label("New blocklist", systemImage: "plus")
-                }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(for: Blocklist.self) { blocklist in
             BlocklistEditorView(mode: .edit(blocklist))
         }
@@ -92,6 +101,11 @@ struct BlocklistsListView: View {
             }
             pendingActiveDelete = nil
         }
+    }
+
+    private var countSubtitle: String {
+        let n = blocklists.count
+        return n == 1 ? "1 blocklist" : "\(n) blocklists"
     }
 
     private func attemptDelete(_ blocklist: Blocklist) {

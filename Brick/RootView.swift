@@ -22,6 +22,10 @@ struct RootView: View {
                 .tag(AppRouter.Tab.settings)
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
+        // Pair with the opaque UITabBarAppearance set in `BrickApp.init()`
+        // so the bar reads as flat warm cream at every scroll position
+        // (iOS 26 otherwise flips to translucent glass on scroll-edge).
+        .toolbarBackground(.visible, for: .tabBar)
         .task { checkLaunchState() }
         .fullScreenCover(isPresented: $showingOnboarding, onDismiss: checkLaunchState) {
             OnboardingView()

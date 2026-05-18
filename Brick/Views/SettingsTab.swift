@@ -14,57 +14,64 @@ struct SettingsTab: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Security") {
-                    Button {
-                        showCurrentGate = true
-                    } label: {
-                        HStack {
-                            Label("Change passcode", systemImage: "lock.rotation")
-                            Spacer()
-                            Text(modeDescription)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                BrickHeader(
+                    title: "Settings",
+                    subtitle: nil,
+                    leading: { IconPlate(symbol: "gearshape.fill", size: 44) }
+                )
+                Form {
+                    Section("Security") {
+                        Button {
+                            showCurrentGate = true
+                        } label: {
+                            HStack {
+                                Label("Change passcode", systemImage: "lock.rotation")
+                                Spacer()
+                                Text(modeDescription)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        .disabled(settings?.hasPasscode != true)
                     }
-                    .disabled(settings?.hasPasscode != true)
-                }
 
-                Section("Integrations") {
-                    NavigationLink {
-                        FocusOnboardingView()
-                    } label: {
-                        HStack {
-                            Label("Focus integration", systemImage: "moon.fill")
-                            Spacer()
-                            Text(focusStatusDescription)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                    Section("Integrations") {
+                        NavigationLink {
+                            FocusOnboardingView()
+                        } label: {
+                            HStack {
+                                Label("Focus integration", systemImage: "moon.fill")
+                                Spacer()
+                                Text(focusStatusDescription)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        NavigationLink {
+                            TravelModeView()
+                        } label: {
+                            HStack {
+                                Label("Travel mode", systemImage: "airplane")
+                                Spacer()
+                                Text(travelStatusDescription)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    NavigationLink {
+                    .navigationDestination(isPresented: $router.presentTravelMode) {
                         TravelModeView()
-                    } label: {
-                        HStack {
-                            Label("Travel mode", systemImage: "airplane")
-                            Spacer()
-                            Text(travelStatusDescription)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
                     }
-                }
-                .navigationDestination(isPresented: $router.presentTravelMode) {
-                    TravelModeView()
-                }
 
-                #if DEBUG
-                debugSection
-                #endif
+                    #if DEBUG
+                    debugSection
+                    #endif
+                }
+                .scrollContentBackground(.hidden)
             }
-            .scrollContentBackground(.hidden)
             .background(Theme.canvas.ignoresSafeArea())
-            .navigationTitle("Settings")
+            .toolbar(.hidden, for: .navigationBar)
             .task { load() }
             .onReceive(tick) { now = $0 }
             .passcodeGate(

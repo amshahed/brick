@@ -257,6 +257,92 @@ struct BrickEmptyState: View {
     }
 }
 
+// MARK: - Screen header
+
+/// Branded screen header — replaces the system `navigationTitle` at the
+/// top of each tab so the four tab roots feel coherent and tie back to
+/// the brick mark + clay palette.
+///
+/// Composition: leading 44pt slot (an `IconPlate` SF Symbol on most tabs,
+/// `AppIconMark` clipped to a rounded square on Home), title in the
+/// rounded display face, optional small-caps subtitle, optional trailing
+/// accessory (the `+` button on Blocklists / Schedules).
+struct BrickHeader<Leading: View, Trailing: View>: View {
+    let title: String
+    let subtitle: String?
+    @ViewBuilder var leading: () -> Leading
+    @ViewBuilder var trailing: () -> Trailing
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder leading: @escaping () -> Leading,
+        @ViewBuilder trailing: @escaping () -> Trailing = { EmptyView() }
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.leading = leading
+        self.trailing = trailing
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: Theme.Space.md) {
+            leading()
+                .frame(width: 44, height: 44)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(Theme.display(28, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                if let subtitle, !subtitle.isEmpty {
+                    Text(subtitle.uppercased())
+                        .font(Theme.label)
+                        .tracking(0.8)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: Theme.Space.sm)
+            trailing()
+        }
+        .padding(.horizontal, Theme.Space.lg)
+        .padding(.top, Theme.Space.md)
+        .padding(.bottom, Theme.Space.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Stat tile
+
+/// Single cell of the home stats grid. Icon-plate top-left, monospaced
+/// value, small-caps label. Wrapped in `cardSurface()` so a 2×2 grid of
+/// tiles reads as a single coherent band.
+struct StatTile: View {
+    let symbol: String
+    let value: String
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Space.sm) {
+            IconPlate(symbol: symbol, size: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(Theme.statNumber(24, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Text(label.uppercased())
+                    .font(Theme.label)
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
+        .cardSurface(padding: Theme.Space.md)
+    }
+}
+
 // MARK: - Icon plate
 
 /// Clay-tinted rounded square holding an SF Symbol. Replaces the ad-hoc
