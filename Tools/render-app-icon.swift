@@ -59,21 +59,53 @@ struct AppIconMark: View {
 }
 
 @MainActor
-func render() throws {
-    let icon = AppIconMark(size: 1024).frame(width: 1024, height: 1024)
+func renderPNG(side: Int) throws -> Data {
+    // Render with `isOpaque = true` so ImageRenderer flattens the alpha
+    // channel against the AppIconMark's cream background. Apple's HIG
+    // requires opaque icons; iOS 26 notification icons specifically
+    // refuse RGBA and silently fall back to the generic placeholder.
+    let icon = AppIconMark(size: CGFloat(side))
+        .frame(width: CGFloat(side), height: CGFloat(side))
     let renderer = ImageRenderer(content: icon)
     renderer.scale = 1
-    guard let nsImage = renderer.nsImage else {
-        throw NSError(domain: "render", code: 1, userInfo: [NSLocalizedDescriptionKey: "nsImage was nil"])
-    }
-    guard let tiff = nsImage.tiffRepresentation,
+    renderer.isOpaque = true
+    guard let nsImage = renderer.nsImage,
+          let tiff = nsImage.tiffRepresentation,
           let bitmap = NSBitmapImageRep(data: tiff),
           let png = bitmap.representation(using: .png, properties: [:]) else {
-        throw NSError(domain: "render", code: 2, userInfo: [NSLocalizedDescriptionKey: "png encode failed"])
+        throw NSError(domain: "render", code: 1, userInfo: [NSLocalizedDescriptionKey: "render failed at side=\(side)"])
     }
-    let out = URL(fileURLWithPath: "Brick/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png")
-    try png.write(to: out)
-    FileHandle.standardOutput.write(Data("wrote \(out.path) (\(png.count) bytes)\n".utf8))
+    return png
+}
+
+@MainActor
+func render() throws {
+    // iOS 26 notification icons read from explicit-size asset-catalog
+    // entries, not from a single 1024 universal master. Without these
+    // smaller renditions, notifications fall back to the generic
+    // grey-square placeholder. (Home-screen icon still works because
+    // the home-screen path scales the 1024 itself.)
+    let sizes: [(name: String, side: Int)] = [
+        ("AppIcon-20@2x.png", 40),
+        ("AppIcon-20@3x.png", 60),
+        ("AppIcon-29@2x.png", 58),
+        ("AppIcon-29@3x.png", 87),
+        ("AppIcon-40@2x.png", 80),
+        ("AppIcon-40@3x.png", 120),
+        ("AppIcon-60@2x.png", 120),
+        ("AppIcon-60@3x.png", 180),
+        ("AppIcon-1024.png", 1024),
+    ]
+    let dir = URL(fileURLWithPath: "Brick/Assets.xcassets/AppIcon.appiconset")
+    var wrote = 0
+    for (name, side) in sizes {
+        let png = try renderPNG(side: side)
+        let out = dir.appendingPathComponent(name)
+        try png.write(to: out)
+        wrote += png.count
+        FileHandle.standardOutput.write(Data("  \(name) (\(side)px, \(png.count)B)\n".utf8))
+    }
+    FileHandle.standardOutput.write(Data("wrote \(sizes.count) PNGs (\(wrote)B total)\n".utf8))
 }
 
 // Use dispatchMain() instead of a semaphore on the main thread —
