@@ -12,7 +12,7 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         static let blockEnded = "brick.block.ended"
         static let breakRequested = "brick.break.requested"
         static let travelEnding = "brick.travel.ending24h"
-        static func breakExpiring30(_ id: UUID) -> String { "brick.break.expiring30.\(id.uuidString)" }
+        static func breakExpiring(_ id: UUID) -> String { "brick.break.expiring.\(id.uuidString)" }
         static func overage(_ id: UUID) -> String { "brick.overage.\(id.uuidString)" }
         static func blockStarting(scheduleID: UUID, occurrenceStart: Date) -> String {
             "brick.block.starting.\(scheduleID.uuidString).\(Int(occurrenceStart.timeIntervalSince1970))"
@@ -57,20 +57,33 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: - Immediate
 
+    /// Called from `ScheduleEngine.reconcileBlockSessions` on the
+    /// no-active-block → active transition. The reconcile path runs both
+    /// in the main app and in `DeviceActivityMonitorExtension.intervalDidStart`,
+    /// and the extension process exits within seconds of `intervalDidStart`
+    /// returning — so a `trigger: nil` (immediate) request gets dropped
+    /// before iOS commits it. A 1-s `UNTimeIntervalNotificationTrigger`
+    /// is committed to the system queue synchronously inside `add(_:)`
+    /// and survives the extension exit.
     func blockStarted(scheduleName: String) {
         let content = UNMutableNotificationContent()
         content.title = "Block started"
         content.body = "Your \(scheduleName) block started. 25-min cold-start active."
         content.sound = .default
-        post(id: Identifier.blockStarted, content: content, trigger: nil)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        post(id: Identifier.blockStarted, content: content, trigger: trigger)
     }
 
+    /// Same extension-survival rationale as `blockStarted` — uses a 1-s
+    /// trigger instead of `nil` so the notification posts reliably when
+    /// reconcile runs from `intervalDidEnd`.
     func blockEnded(todayTotal: TimeInterval) {
         let content = UNMutableNotificationContent()
         content.title = "Block ended"
         content.body = "Block ended. \(Self.formatTotalBlocked(todayTotal)) blocked today."
         content.sound = .default
-        post(id: Identifier.blockEnded, content: content, trigger: nil)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        post(id: Identifier.blockEnded, content: content, trigger: trigger)
     }
 
     func overageApplied(breakID: UUID, overage: TimeInterval, extensionApplied: TimeInterval) {
@@ -95,18 +108,18 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     // MARK: - Time-delayed
 
     func scheduleBreakExpiring(breakID: UUID, firesAt: Date, now: Date = .now) {
-        guard let interval = Self.leadInterval(firesAt: firesAt, lead: 30, now: now) else { return }
+        guard let interval = Self.leadInterval(firesAt: firesAt, lead: 60, now: now) else { return }
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false)
         let content = UNMutableNotificationContent()
         content.title = "Break ending"
-        content.body = "30 sec left on your break."
+        content.body = "1 min left on your break."
         content.sound = .default
         content.userInfo = ["route": "break", "id": breakID.uuidString]
-        post(id: Identifier.breakExpiring30(breakID), content: content, trigger: trigger)
+        post(id: Identifier.breakExpiring(breakID), content: content, trigger: trigger)
     }
 
     func cancelBreakExpiring(breakID: UUID) {
-        let id = Identifier.breakExpiring30(breakID)
+        let id = Identifier.breakExpiring(breakID)
         center.removePendingNotificationRequests(withIdentifiers: [id])
         center.removeDeliveredNotifications(withIdentifiers: [id])
     }
